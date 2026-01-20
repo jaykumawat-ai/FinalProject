@@ -1,19 +1,33 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routes.auth import router as auth_router
+from app.routes.trips import router as trips_router
+
 app = FastAPI()
 
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+        "http://localhost:5177",   # 👈 IMPORTANT
+        "http://127.0.0.1:5177",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# Include routers
+app.include_router(auth_router, prefix="/auth", tags=["Auth"])
+app.include_router(trips_router, prefix="/trips", tags=["Trips"])
+
+# Root route
 @app.get("/")
 def root():
-    return {"message": "THIS IS THE NEW BACKEND CODE"}
-
-@app.get("/test")
-def test():
-    return {"connection": "working"}
+    return {"message": "Backend is running"}

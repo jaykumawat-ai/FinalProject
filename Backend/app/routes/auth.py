@@ -1,28 +1,33 @@
 from fastapi import APIRouter, HTTPException
-from passlib.context import CryptContext
-from app.database import user_collection
-
-router = APIRouter(
-    prefix="/auth",
-    tags=["Auth"]
+from app.models.user import UserRegister, UserLogin
+from app.database import users_collection
+from app.core.security import (
+    hash_password,
+    verify_password,
+    create_access_token
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+router = APIRouter()
 
-@router.post("/signup")
-def signup(user: dict):
-    if user_collection.find_one({"email": user["email"]}):
-        raise HTTPException(status_code=400, detail="User already exists")
+@router.post("/register")
+def register(user: UserRegister):
+    if users_collection.find_one({"email": user.email}):
+        raise HTTPException(status_code=400, detail="Email already exists")
 
-    user["password"] = pwd_context.hash(user["password"])
-    user["wallet"] = 0.0
-    user_collection.insert_one(user)
-    return {"message": "Signup successful"}
+    users_collection.insert_one({
+        "name": user.name,
+        "email": user.email,
+        "password": hash_password(user.password)
+    })
+
+    return {"message": "User registered successfully"}
 
 @router.post("/login")
-def login(user: dict):
-    db_user = user_collection.find_one({"email": user["email"]})
-    if not db_user or not pwd_context.verify(user["password"], db_user["password"]):
+def login(user: UserLogin):
+    db_user = users_collection.find_one({"email": user.email})
+
+    if not db_user or not verify_password(user.password, db_user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    return {"message": "Login successful"}
+    token = create_access_token({"sub": user.email})
+    return {"access_token": token}

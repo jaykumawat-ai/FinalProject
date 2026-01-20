@@ -1,12 +1,7 @@
 from fastapi import APIRouter
-from app.database import trip_collection
 
-router = APIRouter(
-    prefix="/trips",
-    tags=["Trips"]
-)
+router = APIRouter()
 
-@router.post("/")
-def create_trip(trip: dict):
-    trip_collection.insert_one(trip)
-    return {"message": "Trip created"}
+@router.get("/")
+def trips_root():
+    return {"message": "Trips route working"}

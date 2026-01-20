@@ -1,6 +1,11 @@
-import os
-from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
 
-load_dotenv()
+class Settings(BaseSettings):
+    MONGO_URI: str
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
 
-MONGO_URL = os.getenv("MONGO_URL")
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
