@@ -1,5 +1,7 @@
 from pymongo import MongoClient
+from app.config import settings
 
-client = MongoClient("mongodb://localhost:27017")
+client = MongoClient(settings.MONGO_URI)
 db = client.travelease
+
 users_collection = db.users
