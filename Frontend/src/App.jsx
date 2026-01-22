@@ -4,7 +4,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-function App() {
+export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Login />} />
@@ -21,5 +21,3 @@ function App() {
     </Routes>
   );
 }
-
-export default App;

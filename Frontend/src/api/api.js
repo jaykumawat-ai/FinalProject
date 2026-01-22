@@ -1,28 +1,25 @@
-const API_BASE_URL = "http://127.0.0.1:8080";
+const API_URL = "http://127.0.0.1:8080";
 
-export const testBackend = async () => {
-  const response = await fetch(`${API_BASE_URL}/`);
-  return response.json();
-};
+export async function apiRequest(endpoint, method = "GET", body = null) {
+  const token = localStorage.getItem("token");
 
-export const registerUser = async (data) => {
-  const response = await fetch(`${API_BASE_URL}/auth/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : null,
   });
-  return response.json();
-};
 
-export const loginUser = async (data) => {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  });
+  if (!response.ok) {
+    throw new Error("Request failed");
+  }
+
   return response.json();
-};
+}

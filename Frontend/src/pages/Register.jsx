@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { registerUser } from "../api/api";
+import { apiRequest } from "../api/api";
+import { useNavigate } from "react-router-dom";
 
 export default function Register() {
   const [form, setForm] = useState({
@@ -7,23 +8,37 @@ export default function Register() {
     email: "",
     password: "",
   });
+
   const [msg, setMsg] = useState("");
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const res = await registerUser(form);
-    setMsg(res.message || "Registered successfully");
+    setMsg("");
+
+    try {
+      await apiRequest("/auth/register", "POST", form);
+      setMsg("Registration successful! Redirecting...");
+      setTimeout(() => navigate("/"), 1500);
+    } catch (error) {
+      console.error(error);
+      setMsg("Registration failed. Email may already exist.");
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <form
         onSubmit={handleSubmit}
-        className="w-96 p-6 shadow-lg rounded-xl"
+        className="w-96 p-6 bg-white shadow-lg rounded-xl"
       >
         <h2 className="text-2xl font-bold mb-4 text-center">Register</h2>
 
@@ -31,14 +46,19 @@ export default function Register() {
           name="name"
           placeholder="Name"
           className="w-full mb-3 p-2 border rounded"
+          value={form.name}
           onChange={handleChange}
+          required
         />
 
         <input
+          type="email"
           name="email"
           placeholder="Email"
           className="w-full mb-3 p-2 border rounded"
+          value={form.email}
           onChange={handleChange}
+          required
         />
 
         <input
@@ -46,14 +66,20 @@ export default function Register() {
           name="password"
           placeholder="Password"
           className="w-full mb-3 p-2 border rounded"
+          value={form.password}
           onChange={handleChange}
+          required
         />
 
-        <button className="w-full bg-blue-600 text-white py-2 rounded">
+        <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded">
           Register
         </button>
 
-        <p className="mt-3 text-center text-green-600">{msg}</p>
+        {msg && (
+          <p className="mt-3 text-center text-red-500 font-medium">
+            {msg}
+          </p>
+        )}
       </form>
     </div>
   );
