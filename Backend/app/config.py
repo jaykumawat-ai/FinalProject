@@ -4,6 +4,7 @@ class Settings(BaseSettings):
     MONGO_URI: str
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
+    openweather_api_key: str
 
     class Config:
         env_file = ".env"
