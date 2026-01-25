@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from app.routes.wallet import router as wallet_router
 from app.routes.auth import router as auth_router
 from app.routes.trips import router as trips_router
 
@@ -27,7 +27,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
-
+app.include_router(wallet_router, prefix="/wallet", tags=["Wallet"])
 app.include_router(trips_router, prefix="/trips", tags=["Trips"])
 
 # Root route
