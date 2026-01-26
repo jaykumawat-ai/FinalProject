@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     openweather_api_key: str
+    razorpay_key_id: str
+    razorpay_key_secret: str
 
     class Config:
         env_file = ".env"
