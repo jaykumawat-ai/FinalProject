@@ -15,7 +15,7 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed_password: str) -> bool:
     return pwd_context.verify(password, hashed_password)
 
-def create_access_token(data: dict, expires_minutes: int = 60) -> str:
+def create_access_token(data: dict, expires_minutes: int = 60 * 24 * 7 ) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
     to_encode.update({"exp": expire})

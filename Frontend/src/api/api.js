@@ -1,4 +1,5 @@
 const API_URL = "http://127.0.0.1:8080";
+import axios from "axios";
 
 export async function apiRequest(endpoint, method = "GET", body = null) {
   const token = localStorage.getItem("token");
@@ -23,3 +24,21 @@ export async function apiRequest(endpoint, method = "GET", body = null) {
 
   return response.json();
 }
+
+
+const API = axios.create({
+  baseURL: "http://127.0.0.1:8080",
+});
+
+API.interceptors.request.use((req) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    req.headers.Authorization = `Bearer ${token}`;
+  }
+  return req;
+});
+
+export const getNearbyPlaces = (tripId) =>
+  API.get(`/discover/nearby?trip_id=${tripId}`);
+
+export default API;

@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.wallet import router as wallet_router
 from app.routes.auth import router as auth_router
 from app.routes.trips import router as trips_router
+from app.routes.discover import router as discover_router
+import requests
 
 app = FastAPI()
 
@@ -28,9 +30,24 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(wallet_router, prefix="/wallet")
-app.include_router(trips_router, prefix="/trips", tags=["Trips"])
+app.include_router(trips_router)
+app.include_router(discover_router)
 
 # Root route
 @app.get("/")
 def root():
     return {"message": "Backend is running"}
+
+@app.get("/search")
+def search_place(q: str = Query(...)):
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": q,
+        "format": "json",
+        "limit": 5
+    }
+    headers = {
+        "User-Agent": "TravelEaseApp/1.0 (contact@email.com)"
+    }
+    r = requests.get(url, params=params, headers=headers)
+    return r.json()
