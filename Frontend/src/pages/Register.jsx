@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { apiRequest } from "../api/api";
+import api from "../api/api";
+
 import { useNavigate } from "react-router-dom";
 
 export default function Register() {
@@ -25,7 +26,8 @@ export default function Register() {
     setMsg("");
 
     try {
-      await apiRequest("/auth/register", "POST", form);
+      await api.post("/auth/register", form);
+;
       setMsg("Registration successful! Redirecting...");
       setTimeout(() => navigate("/"), 1500);
     } catch (error) {

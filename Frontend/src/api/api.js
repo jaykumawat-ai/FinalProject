@@ -1,44 +1,25 @@
-const API_URL = "http://127.0.0.1:8080";
 import axios from "axios";
 
-export async function apiRequest(endpoint, method = "GET", body = null) {
-  const token = localStorage.getItem("token");
+const API_URL = "http://127.0.0.1:8080";
+const TOKEN_KEY = "access_token";
 
-  const headers = {
+const api = axios.create({
+  baseURL: API_URL,
+  headers: {
     "Content-Type": "application/json",
-  };
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : null,
-  });
-
-  if (!response.ok) {
-    throw new Error("Request failed");
-  }
-
-  return response.json();
-}
-
-
-const API = axios.create({
-  baseURL: "http://127.0.0.1:8080",
+  },
 });
 
-API.interceptors.request.use((req) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    req.headers.Authorization = `Bearer ${token}`;
-  }
-  return req;
-});
+// Attach JWT token automatically
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-export const getNearbyPlaces = (tripId) =>
-  API.get(`/discover/nearby?trip_id=${tripId}`);
-
-export default API;
+export default api;

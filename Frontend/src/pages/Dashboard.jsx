@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { apiRequest } from "../api/api";
+import api from "../api/api";
+
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
@@ -9,7 +10,7 @@ export default function Dashboard() {
   useEffect(() => {
   const fetchUser = async () => {
     try {
-      const data = await apiRequest("/auth/me");
+      const data = await api.get("/auth/me");
       setUser(data);
     } catch (error) {
       localStorage.removeItem("token");
