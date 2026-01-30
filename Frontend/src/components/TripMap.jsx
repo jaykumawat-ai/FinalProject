@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 import api from "../api/api";
 import "leaflet/dist/leaflet.css";
 
+/* ✅ ADD THIS FUNCTION HERE */
+function normalizeType(type) {
+  if (!type) return "other";
+  if (type === "restaurant") return "restaurant";
+  if (type === "cafe") return "cafe";
+  if (type === "attraction" || type === "historic") return "attraction";
+  return "other";
+}
+
 export default function TripMap({ tripId }) {
   const [places, setPlaces] = useState([]);
   const [center, setCenter] = useState([15.3, 74.08]);
@@ -33,15 +42,19 @@ export default function TripMap({ tripId }) {
     <MapContainer center={center} zoom={13} style={{ height: "500px" }}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
       <MarkerClusterGroup>
-        {places.map((p, i) => (
-          <Marker key={i} position={[p.lat, p.lon]}>
-            <Popup>
-              <strong>{p.name}</strong><br />
-              {p.type}<br />
-              {p.distance_km} km
-            </Popup>
-          </Marker>
-        ))}
+        {places.map((p, i) => {
+          const normalizedType = normalizeType(p.type); // ✅ USE IT HERE
+
+          return (
+            <Marker key={i} position={[p.lat, p.lon]}>
+              <Popup>
+                <strong>{p.name}</strong><br />
+                Type: {normalizedType}<br />
+                Distance: {p.distance_km} km
+              </Popup>
+            </Marker>
+          );
+        })}
       </MarkerClusterGroup>
     </MapContainer>
   );
