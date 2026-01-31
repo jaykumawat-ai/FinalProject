@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
 from bson import ObjectId
+from app.services.gemini_ai import generate_itinerary
+
+
 
 from app.services.geocode import geocode_city
 from app.models.trip import TripInput
@@ -11,6 +14,7 @@ from app.database import (
 )
 from app.core.security import get_current_user
 from app.services.planner import smart_trip_planner
+
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
@@ -201,3 +205,32 @@ def booked_trips(current_user: str = Depends(get_current_user)):
         "status": "booked"
     })
     return [serialize_trip(t) for t in trips]
+
+
+
+
+
+
+
+
+@router.post("/ai/plan-trip")
+def ai_plan_trip(data: dict):
+    try:
+        destination = data.get("destination")
+        days = data.get("days")
+        budget = data.get("budget")
+
+        if not destination or not days or not budget:
+            raise HTTPException(status_code=400, detail="Missing trip parameters")
+
+        itinerary = generate_itinerary(destination, days, budget)
+
+        return {
+            "destination": destination,
+            "days": days,
+            "budget": budget,
+            "itinerary": itinerary
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
