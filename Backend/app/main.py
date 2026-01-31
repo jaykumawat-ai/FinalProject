@@ -4,6 +4,9 @@ from app.routes.wallet import router as wallet_router
 from app.routes.auth import router as auth_router
 from app.routes.trips import router as trips_router
 from app.routes.discover import router as discover_router
+from app.routes import trip_places
+
+
 import requests
 
 app = FastAPI()
@@ -32,6 +35,7 @@ app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(wallet_router, prefix="/wallet")
 app.include_router(trips_router)
 app.include_router(discover_router)
+app.include_router(trip_places.router)
 
 # Root route
 @app.get("/")
