@@ -5,7 +5,7 @@ from app.routes.auth import router as auth_router
 from app.routes.trips import router as trips_router
 from app.routes.discover import router as discover_router
 from app.routes import trip_places
-
+from app.routes.transport import router as transport_router
 
 import requests
 
@@ -36,6 +36,7 @@ app.include_router(wallet_router, prefix="/wallet")
 app.include_router(trips_router)
 app.include_router(discover_router)
 app.include_router(trip_places.router)
+app.include_router(transport_router)
 
 # Root route
 @app.get("/")
