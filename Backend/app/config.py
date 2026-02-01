@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     razorpay_key_secret: str
     gemini_api_key: str | None = None
     ors_api_key: str | None = None
+    groq_api_key: str | None = None
     
 
     class Config:

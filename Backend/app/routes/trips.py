@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
 from bson import ObjectId
-from app.services.gemini_ai import generate_itinerary
 
-
-
+from app.services.groq_ai import generate_itinerary
+from app.utils.fallback_itinerary import fallback_itinerary
 from app.services.geocode import geocode_city
 from app.models.trip import TripInput
 from app.database import (
@@ -14,7 +13,6 @@ from app.database import (
 )
 from app.core.security import get_current_user
 from app.services.planner import smart_trip_planner
-
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
@@ -55,7 +53,6 @@ def plan_trip(
     trip: TripInput,
     current_user: str = Depends(get_current_user)
 ):
-    # 1️⃣ AI planning
     plan = smart_trip_planner(
         trip.source,
         trip.destination,
@@ -64,7 +61,6 @@ def plan_trip(
         trip.people
     )
 
-    # 2️⃣ Geocode destination
     coords = geocode_city(trip.destination)
     if not coords:
         raise HTTPException(
@@ -72,7 +68,6 @@ def plan_trip(
             detail="Unable to locate destination city"
         )
 
-    # 3️⃣ Store trip in DB (IMPORTANT: lat & lon stored flat)
     trip_data = {
         "user": current_user,
         "source": trip.source,
@@ -81,9 +76,9 @@ def plan_trip(
         "days": trip.days,
         "people": trip.people,
         "plan": plan,
-        "lat": coords["lat"],              # ✅ REQUIRED
-        "lon": coords["lon"],              # ✅ REQUIRED
-        "coordinates": coords,             # optional (for UI)
+        "lat": coords["lat"],
+        "lon": coords["lon"],
+        "coordinates": coords,
         "status": "planned",
         "created_at": datetime.utcnow(),
         "confirmed_at": None,
@@ -207,30 +202,29 @@ def booked_trips(current_user: str = Depends(get_current_user)):
     return [serialize_trip(t) for t in trips]
 
 
-
-
-
-
-
-
+# -------------------------------------------------
+# 6️⃣ AI-ONLY TRIP PLANNING (Groq + Fallback)
+# -------------------------------------------------
 @router.post("/ai/plan-trip")
 def ai_plan_trip(data: dict):
-    try:
-        destination = data.get("destination")
-        days = data.get("days")
-        budget = data.get("budget")
+    destination = data.get("destination")
+    days = data.get("days")
+    budget = data.get("budget")
 
-        if not destination or not days or not budget:
-            raise HTTPException(status_code=400, detail="Missing trip parameters")
+    if not destination or not days or not budget:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing trip parameters"
+        )
 
-        itinerary = generate_itinerary(destination, days, budget)
+    ai_result = generate_itinerary(destination, days, budget)
 
-        return {
-            "destination": destination,
-            "days": days,
-            "budget": budget,
-            "itinerary": itinerary
-        }
+    if not ai_result:
+        ai_result = fallback_itinerary(destination, days, budget)
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "destination": destination,
+        "days": days,
+        "budget": budget,
+        "itinerary": ai_result
+    }
