@@ -42,6 +42,20 @@ function normalizeType(type = "") {
   return "other";
 }
 
+// Haversine distance (km)
+function getDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /* ================= ICON ================= */
 
 const savedIcon = new L.Icon({
@@ -99,12 +113,18 @@ export default function TripMap({ tripId }) {
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
 
-  // map instance ref & readiness
+  // map instance ref
   const mapRef = useRef(null);
 
-
-  // one-time auto-expand guard per load
-
+  // ================= Travel Mode / Notifications =================
+  const [travelMode, setTravelMode] = useState(false);
+  const [notifyCategories, setNotifyCategories] = useState([
+    "restaurant",
+    "cafe",
+    "attraction",
+  ]);
+  const alertedRef = useRef(new Set());
+  const [nearbyAlert, setNearbyAlert] = useState(null);
 
   /* ================= FETCH NEARBY (SAFE) ================= */
   const loadPlaces = useCallback(
@@ -143,28 +163,30 @@ export default function TripMap({ tripId }) {
           setPlaces(lastGoodPlacesRef.current);
         }
 
-    
-
-  // set initial center only if user hasn't stored one for this trip
+        // set initial center only if user hasn't stored one for this trip
         if (!getStoredCenter(tripId) && data.center?.lat && data.center?.lon) {
           const initial = [data.center.lat, data.center.lon];
           setCenter(initial);
           storeCenter(tripId, initial);
         }
       } catch (err) {
+        console.error("loadPlaces failed:", err);
         setError(err?.response?.data?.detail || "Failed to load places");
       } finally {
         inFlightRef.current = false;
         setLoading(false);
       }
     },
-    [tripId, radius, categories],
+    [tripId, radius, categories]
   );
 
-  // trigger fetch when tripId / radius / categories change
+  // load when core deps change
   useEffect(() => {
     loadPlaces();
   }, [loadPlaces]);
+
+  /* ================= Smart radius rules (removed forced auto-adjust) ================= */
+  // (removed automatic shrinking/expanding to keep radius user-controlled)
 
   /* ================= LOAD SAVED ================= */
   useEffect(() => {
@@ -186,17 +208,52 @@ export default function TripMap({ tripId }) {
   }, [tripId]);
 
   /* ================= GPS ================= */
+useEffect(() => {
+  if (!navigator.geolocation) return;
+
+  const watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      setUserLocation([pos.coords.latitude, pos.coords.longitude]);
+    },
+    (err) => {
+      console.warn("GPS error", err);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 5000,
+    }
+  );
+
+  return () => navigator.geolocation.clearWatch(watchId);
+}, []);
+  /* ================= Travel Mode notification effect ================= */
   useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setUserLocation([pos.coords.latitude, pos.coords.longitude]);
-      },
-      () => {
-        // user denied or unavailable — that's fine
+    if (!travelMode) return;
+    if (!userLocation || !places.length) return;
+
+    // look for nearest not-yet-alerted place within ~0.6 km (600m)
+    for (const p of places) {
+      const type = normalizeType(p.type);
+
+      if (!notifyCategories.includes(type)) continue;
+      if (savedIds.current.has(p.name)) continue;
+      if (alertedRef.current.has(p.name)) continue;
+
+      const distance = getDistanceKm(
+        userLocation[0],
+        userLocation[1],
+        p.lat,
+        p.lon
+      );
+
+      if (distance <= 0.6) {
+        alertedRef.current.add(p.name);
+        setNearbyAlert({ ...p, distance: distance.toFixed(2) });
+        break;
       }
-    );
-  }, []);
+    }
+  }, [travelMode, userLocation, places, notifyCategories]);
 
   /* ================= HANDLERS ================= */
 
@@ -249,18 +306,18 @@ export default function TripMap({ tripId }) {
     if (!mapRef.current) return;
     try {
       mapRef.current.invalidateSize();
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     mapRef.current.flyTo([lat, lon], zoom, { animate: true, duration: 0.8 });
   }
 
   function openGoogleDirections(destLat, destLon) {
-    // Use user's current location as origin when available
     const origin =
       userLocation && userLocation.length === 2
         ? `${userLocation[0]},${userLocation[1]}`
         : "";
     const destination = `${destLat},${destLon}`;
-    // If origin empty, Google will ask user to choose start.
     const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
       origin
     )}&destination=${encodeURIComponent(destination)}`;
@@ -312,6 +369,49 @@ export default function TripMap({ tripId }) {
               📍 Saved Places ({savedPlaces.length})
             </button>
           </div>
+
+          {/* Travel Mode + notification category toggles */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">Travel Mode</span>
+
+            <button
+              onClick={() => setTravelMode((v) => !v)}
+              className={`w-12 h-6 rounded-full relative transition ${
+                travelMode ? "bg-pink-500" : "bg-gray-300"
+              }`}
+              title="Toggle Travel Mode notifications"
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full transition ${
+                  travelMode ? "right-1" : "left-1"
+                }`}
+              />
+            </button>
+
+            <span className="text-xs text-gray-500">{travelMode ? "ON" : "OFF"}</span>
+          </div>
+
+          {travelMode && (
+            <div className="flex gap-2 mt-2">
+              {["restaurant", "cafe", "attraction"].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() =>
+                    setNotifyCategories((prev) =>
+                      prev.includes(cat)
+                        ? prev.filter((c) => c !== cat)
+                        : [...prev, cat]
+                    )
+                  }
+                  className={`px-2 py-1 text-xs rounded border ${
+                    notifyCategories.includes(cat) ? "bg-green-600 text-white" : ""
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Radius + search */}
           <div className="flex gap-4 items-center">
@@ -549,6 +649,38 @@ export default function TripMap({ tripId }) {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Nearby alert popup */}
+      {nearbyAlert && (
+        <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 1200 }}>
+          <div className="bg-white border shadow-lg rounded p-4 w-72">
+            <strong className="block mb-1">📍 Nearby Place</strong>
+            <div className="text-sm font-medium">{nearbyAlert.name}</div>
+            <div className="text-xs text-gray-600">
+              {normalizeType(nearbyAlert.type)} • {nearbyAlert.distance} km
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  flyToLocation(nearbyAlert.lat, nearbyAlert.lon);
+                  setNearbyAlert(null);
+                }}
+                className="flex-1 bg-green-600 text-white py-1 rounded text-sm"
+              >
+                View
+              </button>
+
+              <button
+                onClick={() => setNearbyAlert(null)}
+                className="flex-1 border py-1 rounded text-sm"
+              >
+                Ignore
+              </button>
+            </div>
           </div>
         </div>
       )}
