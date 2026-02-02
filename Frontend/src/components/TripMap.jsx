@@ -9,7 +9,7 @@ import {
   useMap,
 } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 
 import api from "../api/api";
@@ -22,7 +22,8 @@ function getStoredCenter(tripId) {
   try {
     const raw = localStorage.getItem(`trip:${tripId}:center`);
     return raw ? JSON.parse(raw) : null;
-  } catch {
+  } catch (e) {
+    console.warn("getStoredCenter failed:", e);
     return null;
   }
 }
@@ -30,11 +31,13 @@ function getStoredCenter(tripId) {
 function storeCenter(tripId, center) {
   try {
     localStorage.setItem(`trip:${tripId}:center`, JSON.stringify(center));
-  } catch {}
+  } catch (e) {
+    console.warn("storeCenter failed:", e);
+  }
 }
 
 function normalizeType(type = "") {
-  const t = String(type).toLowerCase();
+  const t = String(type ?? "").toLowerCase();
   if (t.includes("restaurant")) return "restaurant";
   if (t.includes("cafe")) return "cafe";
   if (t.includes("historic")) return "historic";
@@ -56,7 +59,7 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/* ================= ICON ================= */
+/* ================= ICONS ================= */
 
 const savedIcon = new L.Icon({
   iconUrl: "https://maps.gstatic.com/mapfiles/ms2/micons/green-dot.png",
@@ -92,7 +95,7 @@ export default function TripMap({ tripId }) {
   const [places, setPlaces] = useState([]);
   const [savedPlaces, setSavedPlaces] = useState([]);
 
-  // start from stored center if available (keeps map where user last viewed this trip)
+  // keep persistent center per trip if available
   const [center, setCenter] = useState(() => getStoredCenter(tripId));
   const [mapCenter, setMapCenter] = useState(null);
 
@@ -108,15 +111,14 @@ export default function TripMap({ tripId }) {
 
   const [showSavedPanel, setShowSavedPanel] = useState(false);
 
-  const savedIds = useRef(new Set());
-  const lastGoodPlacesRef = useRef([]);
+  // refs for stable control of concurrent requests
   const inFlightRef = useRef(false);
   const requestIdRef = useRef(0);
 
   // map instance ref
   const mapRef = useRef(null);
 
-  // ================= Travel Mode / Notifications =================
+  // Travel Mode / Notifications
   const [travelMode, setTravelMode] = useState(false);
   const [notifyCategories, setNotifyCategories] = useState([
     "restaurant",
@@ -130,7 +132,6 @@ export default function TripMap({ tripId }) {
   const loadPlaces = useCallback(
     async ({ overrideLat, overrideLon } = {}) => {
       if (inFlightRef.current) return;
-
       inFlightRef.current = true;
       setLoading(true);
       setError("");
@@ -157,10 +158,9 @@ export default function TripMap({ tripId }) {
 
         if (results.length > 0) {
           setPlaces(results);
-          lastGoodPlacesRef.current = results;
         } else {
-          // fallback to last good places to avoid 0-results jitter
-          setPlaces(lastGoodPlacesRef.current);
+          // fallback to last good places if any
+          setPlaces((prev) => prev.length ? prev : results);
         }
 
         // set initial center only if user hasn't stored one for this trip
@@ -180,13 +180,10 @@ export default function TripMap({ tripId }) {
     [tripId, radius, categories]
   );
 
-  // load when core deps change
+  // Call loadPlaces when dependencies change (tripId, radius, categories)
   useEffect(() => {
     loadPlaces();
   }, [loadPlaces]);
-
-  /* ================= Smart radius rules (removed forced auto-adjust) ================= */
-  // (removed automatic shrinking/expanding to keep radius user-controlled)
 
   /* ================= LOAD SAVED ================= */
   useEffect(() => {
@@ -195,8 +192,7 @@ export default function TripMap({ tripId }) {
       try {
         const data = await getTripPlaces(tripId);
         if (!mounted) return;
-        setSavedPlaces(data);
-        savedIds.current = new Set(data.map((p) => p.name));
+        setSavedPlaces(data || []);
       } catch (err) {
         console.error("failed to load saved places", err);
       }
@@ -207,53 +203,77 @@ export default function TripMap({ tripId }) {
     };
   }, [tripId]);
 
-  /* ================= GPS ================= */
-useEffect(() => {
-  if (!navigator.geolocation) return;
-
-  const watchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      setUserLocation([pos.coords.latitude, pos.coords.longitude]);
-    },
-    (err) => {
-      console.warn("GPS error", err);
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 5000,
-    }
-  );
-
-  return () => navigator.geolocation.clearWatch(watchId);
-}, []);
-  /* ================= Travel Mode notification effect ================= */
+  /* ================= GPS: watchPosition for live updates ================= */
   useEffect(() => {
-    if (!travelMode) return;
-    if (!userLocation || !places.length) return;
+    if (!navigator.geolocation) return;
 
-    // look for nearest not-yet-alerted place within ~0.6 km (600m)
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setUserLocation([pos.coords.latitude, pos.coords.longitude]);
+      },
+      (err) => {
+        console.warn("GPS error", err);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 5000,
+      }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
+
+  /* ================= Notification permission (one-time) ================= */
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch((e) => {
+        console.warn("Notification permission request failed:", e);
+      });
+    }
+  }, []);
+
+  /* ================= Travel Mode watcher (notifications + in-app alert) ================= */
+  useEffect(() => {
+    if (!travelMode || !userLocation || places.length === 0) return;
+
     for (const p of places) {
       const type = normalizeType(p.type);
-
       if (!notifyCategories.includes(type)) continue;
-      if (savedIds.current.has(p.name)) continue;
+      if (savedPlaces.some((s) => s.name === p.name)) continue;
       if (alertedRef.current.has(p.name)) continue;
 
-      const distance = getDistanceKm(
+      const dist = getDistanceKm(
         userLocation[0],
         userLocation[1],
         p.lat,
         p.lon
       );
 
-      if (distance <= 0.6) {
+      if (dist <= 0.5) {
         alertedRef.current.add(p.name);
-        setNearbyAlert({ ...p, distance: distance.toFixed(2) });
-        break;
+
+        // Browser notification
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification("📍 Nearby Place", {
+              body: `${p.name} • ${dist.toFixed(2)} km`,
+            });
+          } catch (e) {
+            console.warn("Notification creation failed:", e);
+          }
+        }
+
+        // In-app popup: only provide "View in Google Maps" or "Ignore"
+        setNearbyAlert({
+          ...p,
+          distance: dist.toFixed(2),
+        });
+
+        console.log("🔔 Notified:", p.name, dist);
       }
     }
-  }, [travelMode, userLocation, places, notifyCategories]);
+  }, [userLocation, travelMode, places, notifyCategories, savedPlaces]);
 
   /* ================= HANDLERS ================= */
 
@@ -269,6 +289,7 @@ useEffect(() => {
     );
   };
 
+  // explicit search current map area
   const onSearchArea = async () => {
     if (!mapCenter || inFlightRef.current) return;
     await loadPlaces({ overrideLat: mapCenter[0], overrideLon: mapCenter[1] });
@@ -280,8 +301,7 @@ useEffect(() => {
     try {
       await savePlaceToTrip(tripId, selectedPlace);
       const updated = await getTripPlaces(tripId);
-      setSavedPlaces(updated);
-      savedIds.current = new Set(updated.map((p) => p.name));
+      setSavedPlaces(updated || []);
     } catch (err) {
       console.error("savePlace failed", err);
     } finally {
@@ -289,9 +309,59 @@ useEffect(() => {
     }
   };
 
+  // Remove saved place (calls backend delete endpoint).
+  // Backend expected: DELETE /trips/{tripId}/places/{placeKey}
+ const removeSavedPlace = async (place) => {
+  if (!place || !place.name) {
+    console.warn("removeSavedPlace: invalid place", place);
+    return;
+  }
+
+  try {
+    await api.delete(
+      `/trips/${tripId}/places`,
+      { params: { name: place.name } }
+    );
+
+    const updated = await getTripPlaces(tripId);
+    setSavedPlaces(updated || []);
+  } catch (err) {
+    console.error("Failed to remove saved place", err);
+    setError("Failed to remove saved place");
+  }
+};
+
+
+
+
+  // Open Google Maps directions (origin optional)
+  function openGoogleDirections(destLat, destLon) {
+    const origin =
+      userLocation && userLocation.length === 2
+        ? `${userLocation[0]},${userLocation[1]}`
+        : "";
+    const destination = `${destLat},${destLon}`;
+    let url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+      destination
+    )}`;
+    if (origin) {
+      url += `&origin=${encodeURIComponent(origin)}`;
+    }
+    window.open(url, "_blank");
+  }
+
   /* ================= Prevent duplicates & zoom logic ================= */
 
-  const filteredPlaces = places.filter((p) => !savedIds.current.has(p.name));
+  // derive saved names set from savedPlaces state
+  const savedNames = useMemo(
+    () => new Set((savedPlaces || []).map((p) => p.name)),
+    [savedPlaces]
+  );
+
+  const filteredPlaces = useMemo(
+    () => (places || []).filter((p) => !savedNames.has(p.name)),
+    [places, savedNames]
+  );
 
   const zoomByRadius = (() => {
     if (radius <= 3) return 15;
@@ -306,22 +376,10 @@ useEffect(() => {
     if (!mapRef.current) return;
     try {
       mapRef.current.invalidateSize();
-    } catch {
+    } catch (e) {
       /* ignore */
     }
     mapRef.current.flyTo([lat, lon], zoom, { animate: true, duration: 0.8 });
-  }
-
-  function openGoogleDirections(destLat, destLon) {
-    const origin =
-      userLocation && userLocation.length === 2
-        ? `${userLocation[0]},${userLocation[1]}`
-        : "";
-    const destination = `${destLat},${destLon}`;
-    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-      origin
-    )}&destination=${encodeURIComponent(destination)}`;
-    window.open(url, "_blank");
   }
 
   /* ================= RENDER ================= */
@@ -345,15 +403,13 @@ useEffect(() => {
               All
             </button>
 
-            {ALL_CATEGORIES.filter((cat) =>
-              places.some((p) => normalizeType(p.type) === cat)
-            ).map((c) => (
+            {/* ALWAYS show category buttons (don't depend on current places list) */}
+            {ALL_CATEGORIES.map((c) => (
               <button
                 key={c}
                 onClick={() => handleCategoryClick(c)}
                 className={`px-3 py-1 rounded border ${
-                  categories.includes(c) &&
-                  categories.length !== ALL_CATEGORIES.length
+                  categories.includes(c) && categories.length !== ALL_CATEGORIES.length
                     ? "bg-green-600 text-white"
                     : ""
                 }`}
@@ -398,9 +454,7 @@ useEffect(() => {
                   key={cat}
                   onClick={() =>
                     setNotifyCategories((prev) =>
-                      prev.includes(cat)
-                        ? prev.filter((c) => c !== cat)
-                        : [...prev, cat]
+                      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
                     )
                   }
                   className={`px-2 py-1 text-xs rounded border ${
@@ -438,9 +492,7 @@ useEffect(() => {
               {inFlightRef.current || loading ? "Searching…" : "🔍 Search this area"}
             </button>
 
-            <div className="ml-auto text-sm">
-              {loading ? "Loading…" : `${places.length} places`}
-            </div>
+            <div className="ml-auto text-sm">{loading ? "Loading…" : `${places.length} places`}</div>
           </div>
         </div>
 
@@ -474,46 +526,43 @@ useEffect(() => {
               )}
 
               <MarkerClusterGroup>
-                {savedPlaces.map((p, i) => (
-                  <Marker key={`saved-${i}`} position={[p.lat, p.lon]} icon={savedIcon}>
-                    <Popup>
-                      <strong>{p.name}</strong>
-                      <br />
-                      Saved • {p.distance_km} km
-                    </Popup>
-                  </Marker>
-                ))}
+                {savedPlaces.map((p) => {
+                  const key = `${p.id ?? p.place_id ?? p.name}-${p.lat}-${p.lon}`;
+                  return (
+                    <Marker key={`saved-${key}`} position={[p.lat, p.lon]} icon={savedIcon}>
+                      <Popup>
+                        <strong>{p.name}</strong>
+                        <br />
+                        Saved • {p.distance_km} km
+                      </Popup>
+                    </Marker>
+                  );
+                })}
 
-                {filteredPlaces.map((p, i) => (
-                  <Marker
-                    key={`nearby-${i}`}
-                    position={[p.lat, p.lon]}
-                    eventHandlers={{ click: () => setSelectedPlace(p) }}
-                  >
-                    <Popup>
-                      <strong>{p.name}</strong>
-                      <br />
-                      {normalizeType(p.type)} • {p.distance_km} km
-                    </Popup>
-                  </Marker>
-                ))}
+                {filteredPlaces.map((p) => {
+                  const key = `${p.id ?? p.place_id ?? p.name}-${p.lat}-${p.lon}`;
+                  return (
+                    <Marker
+                      key={`nearby-${key}`}
+                      position={[p.lat, p.lon]}
+                      eventHandlers={{ click: () => setSelectedPlace(p) }}
+                    >
+                      <Popup>
+                        <strong>{p.name}</strong>
+                        <br />
+                        {normalizeType(p.type)} • {p.distance_km} km
+                      </Popup>
+                    </Marker>
+                  );
+                })}
               </MarkerClusterGroup>
             </MapContainer>
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              Loading map…
-            </div>
+            <div className="flex items-center justify-center h-full text-gray-500">Loading map…</div>
           )}
 
           {/* Floating locate button */}
-          <div
-            style={{
-              position: "absolute",
-              left: 12,
-              top: 12,
-              zIndex: 999,
-            }}
-          >
+          <div style={{ position: "absolute", left: 12, top: 12, zIndex: 999 }}>
             <button
               onClick={() => {
                 if (!mapRef.current) return;
@@ -529,7 +578,7 @@ useEffect(() => {
                       flyToLocation(lat, lon, 15);
                     },
                     () => {
-                      /* ignore */
+                      /* ignore errors shown to user in console */
                     }
                   );
                 }
@@ -542,7 +591,7 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* PLACE details — single, corrected block */}
+        {/* PLACE details — single */}
         {selectedPlace && (
           <div className="bg-white p-4 rounded-lg shadow-md border">
             {/* Header */}
@@ -573,22 +622,20 @@ useEffect(() => {
             <div className="mt-4 flex gap-3">
               <button
                 onClick={onSavePlace}
-                disabled={saving || savedIds.current.has(selectedPlace.name)}
+                disabled={saving || savedNames.has(selectedPlace.name)}
                 className={`flex-1 py-2 rounded font-medium ${
-                  savedIds.current.has(selectedPlace.name)
+                  savedNames.has(selectedPlace.name)
                     ? "bg-green-700 text-white"
                     : "bg-green-600 hover:bg-green-700 text-white"
                 }`}
               >
-                {savedIds.current.has(selectedPlace.name)
-                  ? "Saved ✓"
-                  : saving
-                  ? "Saving…"
-                  : "Save to Trip"}
+                {savedNames.has(selectedPlace.name) ? "Saved ✓" : saving ? "Saving…" : "Save to Trip"}
               </button>
 
               <button
-                onClick={() => openGoogleDirections(selectedPlace.lat, selectedPlace.lon)}
+                onClick={() => {
+                  openGoogleDirections(selectedPlace.lat, selectedPlace.lon);
+                }}
                 className="flex-1 border rounded py-2 hover:bg-gray-50"
               >
                 🌍 Open in Google Maps
@@ -612,39 +659,52 @@ useEffect(() => {
             ) : (
               savedPlaces.map((p, i) => (
                 <div
-                  key={i}
-                  onClick={() => {
-                    const lat = Number(p.lat);
-                    const lon = Number(p.lon);
-                    if (!mapRef.current || Number.isNaN(lat) || Number.isNaN(lon)) {
-                      console.warn("Map not ready or invalid coords");
-                      return;
-                    }
-
-                    // close panel and focus map
-                    setShowSavedPanel(false);
-
-                    setTimeout(() => {
-                      try {
-                        mapRef.current.invalidateSize();
-                      } catch (err) {
-                        /* ignore */
-                      }
-                      mapRef.current.flyTo([lat, lon], 15, { animate: true, duration: 0.8 });
-
-                      setTimeout(() => {
-                        L.popup({ autoClose: true })
-                          .setLatLng([lat, lon])
-                          .setContent(`<strong>${p.name}</strong><br/>Saved • ${p.distance_km} km`)
-                          .openOn(mapRef.current);
-                      }, 350);
-                    }, 120);
-                  }}
+                  key={`${p.id ?? p.place_id ?? p.name}-${p.lat}-${p.lon}-${i}`}
                   className="border p-2 rounded cursor-pointer hover:bg-green-50"
                 >
-                  <strong>{p.name}</strong>
-                  <div className="text-sm text-gray-600">
-                    {p.type} • {p.distance_km} km
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <strong>{p.name}</strong>
+                      <div className="text-sm text-gray-600">{p.type} • {p.distance_km} km</div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 ml-2">
+                      <button
+                        onClick={() => {
+                          const lat = Number(p.lat);
+                          const lon = Number(p.lon);
+                          if (!mapRef.current || Number.isNaN(lat) || Number.isNaN(lon)) {
+                            console.warn("Map not ready or invalid coords");
+                            return;
+                          }
+                          setShowSavedPanel(false);
+                          setTimeout(() => {
+                            try {
+                              mapRef.current.invalidateSize();
+                            } catch (e) {
+                              /* ignore */
+                            }
+                            mapRef.current.flyTo([lat, lon], 15, { animate: true, duration: 0.8 });
+                            setTimeout(() => {
+                              L.popup({ autoClose: true })
+                                .setLatLng([lat, lon])
+                                .setContent(`<strong>${p.name}</strong><br/>Saved • ${p.distance_km} km`)
+                                .openOn(mapRef.current);
+                            }, 350);
+                          }, 120);
+                        }}
+                        className="text-xs bg-green-600 text-white px-2 py-1 rounded"
+                      >
+                        View
+                      </button>
+
+                      <button
+                        onClick={() => removeSavedPlace(p)}
+                        className="text-xs border px-2 py-1 rounded"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -659,25 +719,21 @@ useEffect(() => {
           <div className="bg-white border shadow-lg rounded p-4 w-72">
             <strong className="block mb-1">📍 Nearby Place</strong>
             <div className="text-sm font-medium">{nearbyAlert.name}</div>
-            <div className="text-xs text-gray-600">
-              {normalizeType(nearbyAlert.type)} • {nearbyAlert.distance} km
-            </div>
+            <div className="text-xs text-gray-600">{normalizeType(nearbyAlert.type)} • {nearbyAlert.distance} km</div>
 
             <div className="mt-3 flex gap-2">
               <button
                 onClick={() => {
-                  flyToLocation(nearbyAlert.lat, nearbyAlert.lon);
+                  // open google directions and clear alert
+                  openGoogleDirections(nearbyAlert.lat, nearbyAlert.lon);
                   setNearbyAlert(null);
                 }}
                 className="flex-1 bg-green-600 text-white py-1 rounded text-sm"
               >
-                View
+                View in Google Maps
               </button>
 
-              <button
-                onClick={() => setNearbyAlert(null)}
-                className="flex-1 border py-1 rounded text-sm"
-              >
+              <button onClick={() => setNearbyAlert(null)} className="flex-1 border py-1 rounded text-sm">
                 Ignore
               </button>
             </div>
