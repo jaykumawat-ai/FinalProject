@@ -80,38 +80,43 @@ def get_route(origin_lat: float, origin_lon: float, dest_lat: float, dest_lon: f
     }
 
 
-def _cost_estimates(distance_km: float, budget_level: Optional[str] = None) -> Dict[str, int]:
+def _cost_estimates(distance_km: float, budget_level):
     """
-    Returns base cost estimates for different modes.
-    - distance_km : distance in kilometers (float)
-    - budget_level : optional "low"|"medium"|"high" to scale prices
+    Supports both numeric budget and string budget.
+    Returns estimated costs for car/train/flight.
     """
-    # base per-km costs (naive)
-    car_per_km = 8     # approximate driving cost (INR/km example)
-    train_per_km = 2   # approximate train ticket per km (average)
-    flight_per_km = 6  # approximate flight per km (simplified)
 
-    # scale by budget preference (if provided)
-    scale = 1.0
-    if budget_level:
-        b = budget_level.lower()
-        if b in ("low", "budget"):
-            scale = 0.9
-        elif b in ("high", "premium"):
-            scale = 1.25
+    # Normalize budget
+    if isinstance(budget_level, (int, float)):
+        if budget_level < 5000:
+            level = "low"
+        elif budget_level < 15000:
+            level = "medium"
         else:
-            scale = 1.0
+            level = "high"
+    else:
+        level = str(budget_level).lower()
 
-    car_cost = int(max(50, distance_km * car_per_km * scale))
-    train_cost = int(max(50, distance_km * train_per_km * scale))
-    # flights have a larger fixed overhead + per-km multiplier
-    flight_cost = int(max(1000, distance_km * flight_per_km * scale))
-
-    return {
-        "car": car_cost,
-        "train": train_cost,
-        "flight": flight_cost
+    # Base per-km rates
+    rates = {
+        "car": 8,
+        "train": 2,
+        "flight": 6
     }
+
+    costs = {
+        "car": int(distance_km * rates["car"]),
+        "train": int(distance_km * rates["train"]),
+        "flight": int(distance_km * rates["flight"])
+    }
+
+    # Budget tuning
+    if level == "low":
+        costs["flight"] *= 1.2
+    elif level == "high":
+        costs["flight"] *= 0.9
+
+    return costs
 
 
 def get_transport_options(origin_lat: float, origin_lon: float, dest_lat: float, dest_lon: float, days: Optional[int] = None, budget: Optional[str] = None) -> Dict[str, Any]:

@@ -13,6 +13,7 @@ from app.database import (
 )
 from app.core.security import get_current_user
 from app.services.planner import smart_trip_planner
+from app.services.trip_summary import generate_trip_summary
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
@@ -227,4 +228,36 @@ def ai_plan_trip(data: dict):
         "days": days,
         "budget": budget,
         "itinerary": ai_result
+    }
+
+# -------------------------------------------------
+# 7️⃣ TRIP SUMMARY (Phase 6B)
+# -------------------------------------------------
+@router.post("/summary/{trip_id}")
+def trip_summary(
+    trip_id: str,
+    current_user: str = Depends(get_current_user)
+):
+    trip = trips_collection.find_one({
+        "_id": ObjectId(trip_id),
+        "user": current_user
+    })
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    summary = generate_trip_summary(trip)
+
+    trips_collection.update_one(
+        {"_id": ObjectId(trip_id)},
+        {"$set": {
+            "summary": summary,
+            "summary_created_at": datetime.utcnow()
+        }}
+    )
+
+    return {
+        "status": "ready",
+        "trip_id": trip_id,
+        "summary": summary
     }

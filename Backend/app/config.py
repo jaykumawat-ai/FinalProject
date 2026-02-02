@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     ors_api_key: str | None = None
     groq_api_key: str | None = None
+    rapidapi_key: str | None = None
+    rapidapi_host: str | None = None
+
     
 
     class Config:
