@@ -10,7 +10,8 @@ def generate_itinerary(destination: str, days: int, budget: str):
 
     prompt = f"""
 Create a {days}-day travel itinerary for {destination}.
-Budget: {budget}
+
+Total budget: ₹{budget} INR for {days} days.
 
 Return ONLY valid JSON in this format:
 {{
