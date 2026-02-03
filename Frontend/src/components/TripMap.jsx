@@ -376,7 +376,7 @@ export default function TripMap({ tripId }) {
     if (!mapRef.current) return;
     try {
       mapRef.current.invalidateSize();
-    } catch (e) {
+    } catch  {
       /* ignore */
     }
     mapRef.current.flyTo([lat, lon], zoom, { animate: true, duration: 0.8 });
@@ -681,7 +681,7 @@ export default function TripMap({ tripId }) {
                           setTimeout(() => {
                             try {
                               mapRef.current.invalidateSize();
-                            } catch (e) {
+                            } catch  {
                               /* ignore */
                             }
                             mapRef.current.flyTo([lat, lon], 15, { animate: true, duration: 0.8 });

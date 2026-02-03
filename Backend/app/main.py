@@ -7,6 +7,9 @@ from app.routes.discover import router as discover_router
 from app.routes import trip_places
 from app.routes.transport import router as transport_router
 from app.routes.hotels import router as hotels_router
+from app.routes import weather
+
+
 
 import requests
 
@@ -39,6 +42,8 @@ app.include_router(discover_router)
 app.include_router(trip_places.router)
 app.include_router(transport_router)
 app.include_router(hotels_router)
+app.include_router(weather.router)
+
 
 # Root route
 @app.get("/")
