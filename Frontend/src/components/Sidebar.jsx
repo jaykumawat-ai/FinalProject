@@ -1,41 +1,46 @@
-// src/components/Sidebar.jsx
-import { Link, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import {
   Home,
-  Map,
-  CreditCard,
   Plane,
-  User
+  Map,
+  Wallet,
+  User,
 } from "lucide-react";
 
 const links = [
-  { to: "/dashboard", label: "Dashboard", icon: Home },
-  { to: "/trips", label: "Trips", icon: Plane },
-  { to: "/map", label: "Map", icon: Map },
-  { to: "/wallet", label: "Wallet", icon: CreditCard },
-  { to: "/profile", label: "Profile", icon: User },
+  { label: "Dashboard", path: "/dashboard", icon: Home },
+  { label: "Trips", path: "/trips", icon: Plane },
+  { label: "Map", path: "/map", icon: Map },
+  { label: "Wallet", path: "/wallet", icon: Wallet },
+  { label: "Profile", path: "/profile", icon: User },
+  { label: "Plan Trip", path: "/plan-trip", icon: Plane }
 ];
 
 export default function Sidebar() {
-  const location = useLocation();
-
   return (
-    <aside className="hidden md:block w-64 bg-white border-r min-h-screen">
-      <nav className="p-4 space-y-2">
-        {links.map(({ to, label, icon: Icon }) => {
-          const active = location.pathname === to;
-          return (
-            <Link key={to} to={to} className="block">
-              <div
-                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer
-                  ${active ? "bg-green-50 text-green-700" : "text-gray-700 hover:bg-gray-50"}`}
-              >
-                <Icon size={18} />
-                <span className="font-medium">{label}</span>
-              </div>
-            </Link>
-          );
-        })}
+    <aside className="hidden md:flex w-64 bg-white border-r flex-col">
+      <div className="p-6 font-bold text-xl text-green-600">
+        TravelEase
+      </div>
+
+      <nav className="flex-1 px-3 space-y-1">
+        {links.map(({ label, path, icon: Icon }) => (
+          <NavLink
+            key={path}
+            to={path}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-2 rounded-lg font-medium transition
+               ${
+                 isActive
+                   ? "bg-green-600 text-white"
+                   : "text-gray-700 hover:bg-green-50"
+               }`
+            }
+          >
+            <Icon size={18} />
+            {label}
+          </NavLink>
+        ))}
       </nav>
     </aside>
   );

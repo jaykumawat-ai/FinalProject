@@ -1,14 +1,15 @@
-// src/pages/Login.jsx
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { Mail, Lock, Loader2 } from "lucide-react";
 import api from "../api/api";
 
 export default function Login() {
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -21,77 +22,104 @@ export default function Login() {
         password,
       });
 
-      const token = res?.data?.access_token;
-      if (!token) throw new Error("No token received");
-
-      localStorage.setItem("access_token", token);
-      // optional: put default header now (api interceptor already handles it)
-      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-
-      // go to dashboard after login
+      localStorage.setItem("access_token", res.data.access_token);
       navigate("/dashboard");
-    } catch (err) {
-      console.error(err);
-      setError(
-        err?.response?.data?.detail || "Invalid email or password. Try again."
-      );
+    } catch  {
+      setError("Invalid email or password");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-      <form
-        onSubmit={handleLogin}
-        className="w-full max-w-md bg-white p-8 rounded-xl shadow"
-      >
-        <h2 className="text-2xl font-bold mb-4 text-green-800">Welcome back</h2>
-
-        {error && (
-          <div className="bg-red-50 text-red-700 p-2 rounded mb-4 text-sm">{error}</div>
-        )}
-
-        <label className="block text-sm font-medium text-gray-700">Email</label>
-        <input
-          className="w-full mt-1 mb-3 p-3 border rounded focus:outline-none focus:ring-2 focus:ring-green-200"
-          type="email"
-          placeholder="you@domain.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
+    <div className="min-h-screen flex">
+      {/* LEFT IMAGE SECTION */}
+      <div className="hidden lg:flex w-1/2 relative">
+        <img
+          src="https://images.unsplash.com/photo-1502920514313-52581002a659"
+          alt="Travel"
+          className="absolute inset-0 w-full h-full object-cover"
         />
+        <div className="absolute inset-0 bg-green-900/50 flex items-center justify-center">
+          <div className="text-white text-center px-10">
+            <h1 className="text-4xl font-bold mb-4">TravelEase</h1>
+            <p className="text-lg">
+              Plan smarter. Travel better.  
+              Your journey starts here.
+            </p>
+          </div>
+        </div>
+      </div>
 
-        <label className="block text-sm font-medium text-gray-700">Password</label>
-        <input
-          className="w-full mt-1 mb-4 p-3 border rounded focus:outline-none focus:ring-2 focus:ring-green-200"
-          type="password"
-          placeholder="••••••••"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-
-        <button
-          type="submit"
-          className={`w-full py-3 rounded text-white font-medium transition ${
-            loading ? "bg-gray-400" : "bg-green-700 hover:bg-green-800"
-          }`}
-          disabled={loading}
+      {/* RIGHT LOGIN FORM */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center bg-gray-50">
+        <form
+          onSubmit={handleLogin}
+          className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md"
         >
-          {loading ? "Signing in…" : "Sign in"}
-        </button>
+          <h2 className="text-2xl font-bold text-center mb-1">
+            Welcome Back
+          </h2>
+          <p className="text-sm text-gray-500 text-center mb-6">
+            Login to continue planning your trip
+          </p>
 
-        <p className="mt-4 text-sm text-gray-500">
-          Don't have an account?{" "}
-          <span
-            className="text-green-700 cursor-pointer"
-            onClick={() => navigate("/signup")}
+          {error && (
+            <div className="bg-red-100 text-red-700 px-4 py-2 rounded mb-4 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* EMAIL */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Email</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none"
+                placeholder="you@example.com"
+              />
+            </div>
+          </div>
+
+          {/* PASSWORD */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium mb-1">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:outline-none"
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+
+          {/* LOGIN BUTTON */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2 transition"
           >
-            Create one
-          </span>
-        </p>
-      </form>
+            {loading ? <Loader2 className="animate-spin" size={18} /> : "Login"}
+          </button>
+
+          {/* REGISTER LINK */}
+          <p className="text-sm text-center text-gray-600 mt-4">
+            Don’t have an account?{" "}
+            <Link to="/register" className="text-green-600 font-medium hover:underline">
+              Sign up
+            </Link>
+          </p>
+        </form>
+      </div>
     </div>
   );
 }
