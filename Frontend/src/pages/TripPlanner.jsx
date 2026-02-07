@@ -86,14 +86,24 @@ export default function TripPlanner() {
           <h2 className="text-2xl font-semibold mb-4">Your Trip Plan 🧳</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Info title="Transport" value={tripPlan.transport?.mode} />
-            <Info title="Hotel" value={tripPlan.hotel?.name} />
-            <Info title="Estimated Cost" value={`₹${tripPlan.total_cost}`} />
+            <Info
+  title="Transport"
+  value={tripPlan.transport?.recommended}
+/>
+            <Info title="Hotel" value={tripPlan.hotel} />
+            <Info
+  title="Estimated Cost"
+  value={
+    tripPlan.estimated_cost
+      ? `₹${tripPlan.estimated_cost}`
+      : "Calculating..."
+  }
+/>
           </div>
 
           <h3 className="mt-6 font-semibold">Activities</h3>
           <ul className="list-disc ml-6 text-gray-700">
-            {tripPlan.activities?.map((a, i) => (
+            {tripPlan.itinerary?.map((a, i) => (
               <li key={i}>{a}</li>
             ))}
           </ul>

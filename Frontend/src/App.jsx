@@ -4,6 +4,8 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import TripDetails from "./pages/TripDetails";
+import TripPlanner from "./pages/TripPlanner"; 
+
 
 export default function App() {
   return (
