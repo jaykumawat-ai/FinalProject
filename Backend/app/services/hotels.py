@@ -11,9 +11,10 @@ def get_headers():
         raise RuntimeError("RapidAPI credentials missing")
 
     return {
-        "x-rapidapi-key": settings.rapidapi_key,
-        "x-rapidapi-host": settings.rapidapi_host,
+        "X-RapidAPI-Key": settings.rapidapi_key,
+        "X-RapidAPI-Host": settings.rapidapi_host,
     }
+
 
 
 def get_destination_id(city: str):
@@ -69,5 +70,7 @@ def search_hotels(city: str, checkin: str, checkout: str, adults: int = 2):
             "availability": True,
             "booking_url": h.get("url")
         })
+
+        
 
     return hotels

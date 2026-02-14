@@ -42,7 +42,7 @@ app.include_router(discover_router)
 app.include_router(trip_places.router)
 app.include_router(transport_router)
 app.include_router(hotels_router)
-app.include_router(weather.router)
+
 
 
 # Root route

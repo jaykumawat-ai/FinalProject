@@ -76,10 +76,11 @@ def generate_trip_summary(trip: Dict[str, Any]) -> Dict[str, Any]:
 
     summary = {
         "route": {
-            "from": source,
-            "to": destination,
-            "distance_km": transport_data.get("distance_km") if transport_data else None
-        },
+    "source": source,
+    "destination": destination,
+    "distance_km": transport_data.get("distance_km") if transport_data else None
+}
+,
         "transport": transport_data,
         "hotels": hotels[:5],
         "itinerary": trip.get("plan", {}).get("itinerary"),

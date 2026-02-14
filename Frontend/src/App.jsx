@@ -5,6 +5,9 @@ import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import TripDetails from "./pages/TripDetails";
 import TripPlanner from "./pages/TripPlanner"; 
+import MyTrips from "./pages/MyTrips";
+import Summary from "./pages/Summary";
+
 
 
 export default function App() {
@@ -24,6 +27,16 @@ export default function App() {
 />
 
 <Route
+  path="/my-trips"
+  element={
+    <ProtectedRoute>
+      <MyTrips />
+    </ProtectedRoute>
+  }
+/>
+
+
+<Route
   path="/trips/:id"
   element={
     <ProtectedRoute>
@@ -31,6 +44,16 @@ export default function App() {
     </ProtectedRoute>
   }
 />
+
+<Route
+  path="/summary/:id"
+  element={
+    <ProtectedRoute>
+      <Summary />
+    </ProtectedRoute>
+  }
+/>
+
     </Routes>
   );
 }

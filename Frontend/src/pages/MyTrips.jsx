@@ -32,7 +32,7 @@ export default function MyTrips() {
 
       {/* Tabs */}
       <div className="flex gap-4 mb-6">
-        {["all", "planned", "booked"].map((tab) => (
+        {["all", "planned", "confirmed", "booked"].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -66,7 +66,8 @@ export default function MyTrips() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredTrips.map((trip) => (
             <div
-              key={trip._id}
+              key={trip.id}
+
               className="bg-white rounded-xl shadow hover:shadow-xl transition overflow-hidden"
             >
               <div
@@ -95,20 +96,24 @@ export default function MyTrips() {
                   </span>
                 </div>
 
-                <span
-                  className={`inline-block px-3 py-1 text-xs rounded-full mb-3 ${
-                    trip.status === "booked"
-                      ? "bg-green-100 text-green-700"
-                      : "bg-yellow-100 text-yellow-700"
-                  }`}
-                >
-                  {trip.status || "planned"}
-                </span>
+             <span
+  className={`inline-block px-3 py-1 text-xs rounded-full mb-3 ${
+    trip.status === "booked"
+      ? "bg-green-100 text-green-700"
+      : trip.status === "confirmed"
+      ? "bg-blue-100 text-blue-700"
+      : "bg-yellow-100 text-yellow-700"
+  }`}
+>
+  {trip.status || "planned"}
+</span>
 
                 <button
-                  onClick={() => navigate(`/trips/${trip._id}`)}
+                  onClick={() => navigate(`/trips/${trip.id}`)}
+
                   className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
                 >
+                  
                   View Details
                 </button>
               </div>

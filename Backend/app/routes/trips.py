@@ -35,6 +35,7 @@ def serialize_trip(trip):
         "created_at": trip.get("created_at"),
         "confirmed_at": trip.get("confirmed_at"),
         "booked_at": trip.get("booked_at"),
+        "selected_transport": trip.get("selected_transport"),
     }
 
 
@@ -98,11 +99,12 @@ def plan_trip(
 
 
 # -------------------------------------------------
-# 2️⃣ CONFIRM TRIP
+# 2️⃣ CONFIRM TRIP (with transport selection)
 # -------------------------------------------------
 @router.post("/confirm/{trip_id}")
 def confirm_trip(
     trip_id: str,
+    data: dict,
     current_user: str = Depends(get_current_user)
 ):
     trip = trips_collection.find_one({
@@ -116,15 +118,47 @@ def confirm_trip(
     if trip["status"] != "planned":
         raise HTTPException(status_code=400, detail="Trip cannot be confirmed")
 
+    selected_mode = data.get("selected_transport")
+
+    if not selected_mode:
+        raise HTTPException(status_code=400, detail="Transport selection required")
+
+    # Find selected transport option
+    transport_options = trip["plan"]["transport"]["options"]
+    selected_option = next(
+        (opt for opt in transport_options if opt["mode"] == selected_mode["mode"]),
+        None
+    )
+
+    if not selected_option:
+        raise HTTPException(status_code=400, detail="Invalid transport option")
+
+    # Recalculate total cost
+    per_day_cost = 1000
+    days = trip["days"]
+    people = trip["people"]
+
+    total_cost = (
+        selected_option["estimated_cost"] +
+        (per_day_cost * days)
+    ) * people
+
     trips_collection.update_one(
         {"_id": ObjectId(trip_id)},
         {"$set": {
             "status": "confirmed",
+            "selected_transport": selected_option,
+            "final_cost": int(total_cost),
             "confirmed_at": datetime.utcnow()
         }}
     )
 
-    return {"message": "Trip confirmed", "trip_id": trip_id}
+    return {
+        "message": "Trip confirmed",
+        "trip_id": trip_id,
+        "final_cost": int(total_cost)
+    }
+
 
 
 # -------------------------------------------------
@@ -146,7 +180,12 @@ def book_trip(
     if trip["status"] != "confirmed":
         raise HTTPException(status_code=400, detail="Confirm trip before booking")
 
-    cost = trip["plan"]["estimated_cost"]
+    cost = trip.get("final_cost")
+    if not cost:
+        raise HTTPException(status_code=400, detail="Trip cost not finalized")
+
+    
+
 
     wallet = wallets_collection.find_one({"user": current_user})
     if not wallet or wallet["balance"] < cost:
@@ -231,9 +270,9 @@ def ai_plan_trip(data: dict):
     }
 
 # -------------------------------------------------
-# 7️⃣ TRIP SUMMARY (Phase 6B)
+# 7️⃣ TRIP SUMMARY (Phase 6B)  — return trip + summary
 # -------------------------------------------------
-@router.post("/summary/{trip_id}")
+@router.get("/summary/{trip_id}")
 def trip_summary(
     trip_id: str,
     current_user: str = Depends(get_current_user)
@@ -256,8 +295,12 @@ def trip_summary(
         }}
     )
 
-    return {
-        "status": "ready",
-        "trip_id": trip_id,
-        "summary": summary
-    }
+    # Build a trip object that matches serialize_trip (and attach summary)
+    trip_obj = serialize_trip(trip)
+    trip_obj["summary"] = summary
+    # include final_cost if present in DB (useful for UI)
+    if "final_cost" in trip:
+        trip_obj["final_cost"] = trip.get("final_cost")
+
+    return trip_obj
+

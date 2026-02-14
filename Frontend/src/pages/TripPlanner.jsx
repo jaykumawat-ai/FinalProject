@@ -1,6 +1,12 @@
 import { useState } from "react";
 import api from "../api/api";
-import { MapPin, Users, Calendar, IndianRupee, Plane } from "lucide-react";
+import {
+  MapPin,
+  Users,
+  Calendar,
+  IndianRupee,
+  Plane
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function TripPlanner() {
@@ -37,21 +43,14 @@ export default function TripPlanner() {
 
       setTripPlan(res.data);
     } catch (err) {
-      setError("Failed to generate trip plan");
       console.error(err);
+      setError("Failed to generate trip plan");
     } finally {
       setLoading(false);
     }
   };
 
-  const confirmTrip = async () => {
-    try {
-      await api.post(`/trips/confirm/${tripPlan.trip_id}`);
-      navigate("/trips");
-    } catch (err) {
-      alert("Failed to confirm trip");
-    }
-  };
+
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -83,38 +82,73 @@ export default function TripPlanner() {
       {/* TRIP RESULT */}
       {tripPlan && (
         <div className="mt-8 bg-white rounded-xl shadow p-6">
-          <h2 className="text-2xl font-semibold mb-4">Your Trip Plan 🧳</h2>
+          <h2 className="text-2xl font-semibold mb-4">
+            Your Trip Plan 🧳
+          </h2>
 
+          {/* SUMMARY CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Info
-  title="Transport"
-  value={tripPlan.transport?.recommended}
-/>
-            <Info title="Hotel" value={tripPlan.hotel} />
+              title="Recommended Transport"
+              value={tripPlan.plan?.transport?.recommended}
+            />
             <Info
-  title="Estimated Cost"
-  value={
-    tripPlan.estimated_cost
-      ? `₹${tripPlan.estimated_cost}`
-      : "Calculating..."
-  }
-/>
+              title="Hotel"
+              value={tripPlan.plan?.hotel}
+            />
+            <Info
+              title="Estimated Cost"
+              value={
+                tripPlan.plan?.estimated_cost
+                  ? `₹${tripPlan.plan.estimated_cost}`
+                  : "Calculating..."
+              }
+            />
           </div>
 
-          <h3 className="mt-6 font-semibold">Activities</h3>
-          <ul className="list-disc ml-6 text-gray-700">
-            {tripPlan.itinerary?.map((a, i) => (
-              <li key={i}>{a}</li>
-            ))}
-          </ul>
+          {/* ACTIVITIES */}
+          <h3 className="mt-6 font-semibold text-lg">Activities</h3>
 
+          {tripPlan.plan?.itinerary?.length > 0 ? (
+            <div className="mt-3 space-y-4">
+              {tripPlan.plan.itinerary.map((day, i) => (
+                <div
+                  key={i}
+                  className="border rounded-lg p-4 bg-gray-50"
+                >
+                  <h4 className="font-semibold mb-2">
+                    {day.title}
+                  </h4>
+
+                  <ul className="list-disc ml-5 text-gray-700">
+                    {day.activities?.map((act, idx) => (
+                      <li key={idx}>
+                        <span className="font-medium">
+                          {act.time}
+                        </span>{" "}
+                        – {act.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 mt-2">
+              No activities generated.
+            </p>
+          )}
           <button
-            onClick={confirmTrip}
-            className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg
-                       hover:bg-blue-700 transition font-semibold flex items-center justify-center gap-2"
-          >
-            <Plane size={18} /> Confirm Trip
-          </button>
+  onClick={() => navigate(`/trips/${tripPlan.id}`)}
+  className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg
+             hover:bg-blue-700 transition font-semibold"
+>
+  View Full Plan
+</button>
+
+
+
+          
         </div>
       )}
     </div>
@@ -141,7 +175,9 @@ function Info({ title, value }) {
   return (
     <div className="border rounded-lg p-4">
       <p className="text-sm text-gray-500">{title}</p>
-      <p className="font-semibold">{value || "—"}</p>
+      <p className="font-semibold capitalize">
+        {value || "—"}
+      </p>
     </div>
   );
 }
