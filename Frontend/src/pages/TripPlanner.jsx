@@ -140,7 +140,7 @@ export default function TripPlanner() {
             </p>
           )}
           <button
-  onClick={() => navigate(`/trips/${tripPlan.id}`)}
+  onClick={() => navigate(`/trips/${tripPlan.id}/setup`)}
   className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg
              hover:bg-blue-700 transition font-semibold"
 >
