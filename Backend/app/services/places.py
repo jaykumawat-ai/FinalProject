@@ -87,3 +87,4 @@ def fetch_nearby_places(lat, lon, radius_km=5):
         })
 
     return sorted(places, key=lambda x: x["distance_km"])
+

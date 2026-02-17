@@ -91,9 +91,12 @@ function RecenterMap({ center }) {
 
 const ALL_CATEGORIES = ["restaurant", "cafe", "attraction", "historic"];
 
+
 export default function TripMap({ tripId }) {
   const [places, setPlaces] = useState([]);
   const [savedPlaces, setSavedPlaces] = useState([]);
+  const [tripDays, setTripDays] = useState(5);
+  const isGlobal = tripId?.startsWith("global-");
 
   // keep persistent center per trip if available
   const [center, setCenter] = useState(() => getStoredCenter(tripId));
@@ -128,6 +131,18 @@ export default function TripMap({ tripId }) {
   const alertedRef = useRef(new Set());
   const [nearbyAlert, setNearbyAlert] = useState(null);
 
+ // If this is a global map (no stored trip center),
+  // set default India center
+useEffect(() => {
+  if (!isGlobal) return;
+
+  const defaultIndia = [22.9734, 78.6569];
+  setCenter(defaultIndia);
+}, [isGlobal]);
+
+
+
+
   /* ================= FETCH NEARBY (SAFE) ================= */
   const loadPlaces = useCallback(
     async ({ overrideLat, overrideLon } = {}) => {
@@ -143,12 +158,15 @@ export default function TripMap({ tripId }) {
           category: categories.join(","),
         };
 
-        if (overrideLat != null && overrideLon != null) {
-          params.lat = overrideLat;
-          params.lon = overrideLon;
-        } else {
-          params.trip_id = tripId;
-        }
+       if (overrideLat != null && overrideLon != null) {
+  params.lat = overrideLat;
+  params.lon = overrideLon;
+} else if (isGlobal && center) {
+  params.lat = center[0];
+  params.lon = center[1];
+} else if (!isGlobal) {
+  params.trip_id = tripId;
+}
 
         const res = await api.get("/discover/nearby", { params });
         if (thisRequestId !== requestIdRef.current) return;
@@ -187,8 +205,10 @@ export default function TripMap({ tripId }) {
 
   /* ================= LOAD SAVED ================= */
   useEffect(() => {
-    let mounted = true;
-    async function loadSaved() {
+  if (isGlobal) return; // 🚀 Skip saved places in global
+
+  let mounted = true;
+  async function loadSaved() {
       try {
         const data = await getTripPlaces(tripId);
         if (!mounted) return;
@@ -202,6 +222,28 @@ export default function TripMap({ tripId }) {
       mounted = false;
     };
   }, [tripId]);
+
+
+
+
+
+  useEffect(() => {
+  if (isGlobal) return;
+
+  async function loadTripMeta() {
+    try {
+      const res = await api.get(`/trips/summary/${tripId}`);
+      if (res.data?.days) {
+        setTripDays(res.data.days);
+      }
+    } catch  {
+      console.warn("Failed to load trip meta");
+    }
+  }
+
+  loadTripMeta();
+}, [tripId]);
+
 
   /* ================= GPS: watchPosition for live updates ================= */
   useEffect(() => {
@@ -385,15 +427,15 @@ export default function TripMap({ tripId }) {
   /* ================= RENDER ================= */
 
   return (
-    <div className="flex w-full h-[calc(100vh-120px)]">
+    <div className="flex w-full h-[600px] overflow-hidden">
       {/* LEFT: controls + map */}
-      <div className="flex-1 flex flex-col gap-4 p-4">
+      <div className="flex-1 flex flex-col gap-4 p-4 h-full overflow-hidden">
         {/* Controls container */}
         <div className="bg-white p-3 rounded shadow-sm space-y-3">
           {/* Filters */}
           <div className="flex gap-2 flex-wrap items-center">
             <button
-              onClick={handleAllClick}
+         onClick={handleAllClick}
               className={`px-3 py-1 rounded ${
                 categories.length === ALL_CATEGORIES.length
                   ? "bg-green-700 text-white"
@@ -497,7 +539,7 @@ export default function TripMap({ tripId }) {
         </div>
 
         {/* MAP container */}
-        <div className="flex-1 relative">
+        <div className="relative flex-1 min-h-0">
           {center ? (
             <MapContainer
               center={center}
@@ -505,7 +547,7 @@ export default function TripMap({ tripId }) {
               whenCreated={(map) => {
                 mapRef.current = map;
               }}
-              style={{ height: "100%", width: "100%" }}
+              style={{ height: "100%", width: "100%", zIndex: 0 }}
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
@@ -618,29 +660,69 @@ export default function TripMap({ tripId }) {
 
             <p className="mt-2 text-sm text-gray-600">{selectedPlace.distance_km} km</p>
 
-            {/* Actions */}
-            <div className="mt-4 flex gap-3">
-              <button
-                onClick={onSavePlace}
-                disabled={saving || savedNames.has(selectedPlace.name)}
-                className={`flex-1 py-2 rounded font-medium ${
-                  savedNames.has(selectedPlace.name)
-                    ? "bg-green-700 text-white"
-                    : "bg-green-600 hover:bg-green-700 text-white"
-                }`}
-              >
-                {savedNames.has(selectedPlace.name) ? "Saved ✓" : saving ? "Saving…" : "Save to Trip"}
-              </button>
+           {/* Actions */}
+<div className="mt-4 flex gap-3">
+  <button
+    onClick={onSavePlace}
+    disabled={saving || savedNames.has(selectedPlace.name)}
+    className={`flex-1 py-2 rounded font-medium ${
+      savedNames.has(selectedPlace.name)
+        ? "bg-green-700 text-white"
+        : "bg-green-600 hover:bg-green-700 text-white"
+    }`}
+  >
+    {savedNames.has(selectedPlace.name)
+      ? "Saved ✓"
+      : saving
+      ? "Saving…"
+      : "Save to Trip"}
+  </button>
 
-              <button
-                onClick={() => {
-                  openGoogleDirections(selectedPlace.lat, selectedPlace.lon);
-                }}
-                className="flex-1 border rounded py-2 hover:bg-gray-50"
-              >
-                🌍 Open in Google Maps
-              </button>
-            </div>
+  <button
+    onClick={() => {
+      openGoogleDirections(selectedPlace.lat, selectedPlace.lon);
+    }}
+    className="flex-1 border rounded py-2 hover:bg-gray-50"
+  >
+    🌍 Open in Google Maps
+  </button>
+</div>
+
+{/* 👇 ADD THIS RIGHT BELOW ACTIONS */}
+<select
+  onChange={async (e) => {
+    if (isGlobal) return;
+
+    const day = Number(e.target.value);
+    if (!day) return;
+
+    try {
+      await api.post(`/trips/${tripId}/itinerary/add-place`, {
+        day,
+        place: {
+          name: selectedPlace.name,
+          lat: selectedPlace.lat,
+          lon: selectedPlace.lon,
+          type: selectedPlace.type,
+        },
+      });
+
+      alert("Added to itinerary!");
+    } catch  {
+      alert("Failed to add to itinerary");
+    }
+  }}
+
+  className="border p-2 rounded mt-3 w-full"
+>
+  <option value="">Assign to Day...</option>
+  {Array.from({ length: tripDays }, (_, i) => i + 1).map((d) => (
+    <option key={d} value={d}>
+      Day {d}
+    </option>
+  ))}
+</select>
+
           </div>
         )}
       </div>

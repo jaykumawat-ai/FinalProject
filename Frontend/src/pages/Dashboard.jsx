@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plane, Map, Wallet, PlusCircle, Loader2 } from "lucide-react";
 import api from "../api/api";
-import Sidebar from "../components/Sidebar";
+
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -47,7 +47,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
-      <Sidebar />
+     
 
       <main className="flex-1 p-6">
         {/* HEADER */}

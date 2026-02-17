@@ -1,5 +1,6 @@
+// frontend: src/pages/Summary.jsx
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/api";
 import {
   MapPin,
@@ -7,13 +8,18 @@ import {
   Hotel,
   IndianRupee,
   Calendar,
-  CheckCircle
+  CheckCircle,
 } from "lucide-react";
+import TripMap from "../components/TripMap";
 
 export default function SummaryPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // New: map visibility toggle
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     fetchTrip();
@@ -23,14 +29,11 @@ export default function SummaryPage() {
   const fetchTrip = async () => {
     setLoading(true);
     try {
-      // Try the efficient per-trip summary endpoint first (recommended backend)
       const res = await api.get(`/trips/summary/${id}`);
-setTrip(res.data); 
-
+      setTrip(res.data);
     } catch (err) {
       console.warn("Primary summary endpoint failed, falling back to list fetch.", err);
       try {
-        // Fallback: old endpoint that returns a list of trips
         const res2 = await api.get("/trips/my-trips");
         const found = Array.isArray(res2.data) ? res2.data.find((t) => String(t.id) === String(id)) : null;
         setTrip(found || null);
@@ -45,17 +48,15 @@ setTrip(res.data);
 
   const formatINR = (value) => {
     const n = Number(value ?? 0);
-    // Keep zero as 0 instead of NaN
     return `₹${isNaN(n) ? "0" : n.toLocaleString("en-IN")}`;
   };
 
   if (loading) return <div className="p-6">Loading summary...</div>;
   if (!trip) return <div className="p-6">Trip not found</div>;
 
-  // Prefer summary fields where available, otherwise fallback to older fields
+  // Prefer summary fields where available, otherwise fallback
   const summary = trip.summary ?? {};
   const route = summary.route ?? { source: trip.source, destination: trip.destination };
-  const transport = summary.transport ?? trip.selected_transport ?? {};
   const selectedTransport = summary.selected_transport ?? trip.selected_transport ?? {};
   const hotel = summary.hotel ?? trip.plan?.hotel ?? "—";
   const financialTotal = summary.financial?.total_paid ?? trip.final_cost ?? 0;
@@ -75,6 +76,28 @@ setTrip(res.data);
         <p className="text-lg font-medium">
           {route.source ?? "Unknown"} → {route.destination ?? "Unknown"}
         </p>
+
+        {/* Quick actions: toggle map + proceed */}
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={() => setShowMap((v) => !v)}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+          >
+            {showMap ? "Hide Map" : "Explore Nearby Places"}
+          </button>
+
+          <button
+            onClick={() => navigate(`/trips/${id}`)}
+            className="px-4 py-2 border rounded-lg hover:bg-gray-50 transition"
+          >
+            Proceed to Trip Details
+          </button>
+
+          {/* optional: a small status label */}
+          <span className="ml-auto text-sm text-gray-500">
+            Status: <strong className="ml-1">{trip.status ?? "—"}</strong>
+          </span>
+        </div>
       </div>
 
       {/* TRANSPORT */}
@@ -83,9 +106,9 @@ setTrip(res.data);
           <Plane size={18} /> Selected Transport
         </h2>
 
-        <p><strong>Mode:</strong> {selectedTransport?.mode ?? transport?.mode ?? "—"}</p>
-        <p><strong>Duration:</strong> {selectedTransport?.duration_hours ?? transport?.duration_hours ?? "—"} hrs</p>
-        <p><strong>Cost:</strong> {formatINR(selectedTransport?.estimated_cost ?? transport?.estimated_cost ?? summary?.estimated_total_cost)}</p>
+        <p><strong>Mode:</strong> {selectedTransport?.mode ?? "—"}</p>
+        <p><strong>Duration:</strong> {selectedTransport?.duration_hours ?? "—"} hrs</p>
+        <p><strong>Cost:</strong> {formatINR(selectedTransport?.estimated_cost ?? summary?.estimated_total_cost)}</p>
       </div>
 
       {/* HOTEL */}
@@ -93,21 +116,16 @@ setTrip(res.data);
         <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
           <Hotel size={18} /> Hotel
         </h2>
-
         <p>{hotel}</p>
       </div>
 
-      {/* COST BREAKDOWN */}
+      {/* FINANCIAL */}
       <div className="bg-white shadow rounded-xl p-6 mb-6">
         <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
           <IndianRupee size={18} /> Financial Summary
         </h2>
 
-        <p>
-          <strong>Total Paid:</strong> {formatINR(financialTotal)}
-        </p>
-
-        {/* optional wallet transaction label if available */}
+        <p><strong>Total Paid:</strong> {formatINR(financialTotal)}</p>
         {summary.financial?.wallet_transaction && (
           <p className="mt-2 text-sm text-gray-600">
             <strong>Transaction:</strong> {summary.financial.wallet_transaction}
@@ -146,17 +164,28 @@ setTrip(res.data);
         )}
       </div>
 
-      {/* STATUS TIMELINE */}
-      <div className="bg-white shadow rounded-xl p-6">
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+      {/* MAP: show only if user toggled */}
+      {showMap && (
+        <div className="mt-6">
+          <h2 className="text-2xl font-semibold mb-4">Explore Nearby Places</h2>
+
+          {/* IMPORTANT: fixed-height + overflow-hidden container prevents map from growing beyond its area */}
+          <div className="h-[600px] bg-white rounded-2xl shadow overflow-hidden">
+            {/* TripMap expects to fill its parent; keep parent height fixed */}
+            <TripMap tripId={trip.id ?? id} />
+          </div>
+        </div>
+      )}
+
+      {/* STATUS / CONFIDENCE */}
+      <div className="bg-white shadow rounded-xl p-6 mt-6">
+        <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
           <CheckCircle size={18} /> Status
         </h2>
 
         <p>Status: <strong>{trip.status ?? "—"}</strong></p>
         <p className="text-sm text-gray-600 mt-2">Confidence: {(Number(confidence) * 100).toFixed(0)}%</p>
-        {generatedAt && (
-          <p className="text-sm text-gray-600 mt-1">Generated at: {new Date(generatedAt).toLocaleString()}</p>
-        )}
+        {generatedAt && <p className="text-sm text-gray-600 mt-1">Generated at: {new Date(generatedAt).toLocaleString()}</p>}
       </div>
     </div>
   );

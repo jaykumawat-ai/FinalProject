@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
 from bson import ObjectId
+from fastapi import Query
+import json
 
-from app.services.groq_ai import generate_itinerary
+from app.services.groq_ai import generate_itinerary ,generate_recommendations
 from app.utils.fallback_itinerary import fallback_itinerary
 from app.services.geocode import geocode_city
 from app.models.trip import TripInput
@@ -36,6 +38,9 @@ def serialize_trip(trip):
         "confirmed_at": trip.get("confirmed_at"),
         "booked_at": trip.get("booked_at"),
         "selected_transport": trip.get("selected_transport"),
+        "final_cost": trip.get("final_cost"),
+        "saved_food": trip.get("saved_food", []),
+        "saved_places": trip.get("saved_places", []),
     }
 
 
@@ -84,7 +89,9 @@ def plan_trip(
         "status": "planned",
         "created_at": datetime.utcnow(),
         "confirmed_at": None,
-        "booked_at": None
+        "booked_at": None,
+        "saved_food": [],
+        "saved_places": []
     }
 
     result = trips_collection.insert_one(trip_data)
@@ -304,3 +311,267 @@ def trip_summary(
 
     return trip_obj
 
+
+
+
+# -------------------------------------------------
+# 7️⃣ SMART PERSONALIZED AI RECOMMENDATIONS
+# -------------------------------------------------
+# trips.py — replace the /{trip_id}/recommendations endpoint with this
+
+
+
+@router.post("/{trip_id}/recommendations")
+def trip_recommendations(
+    trip_id: str,
+    companions: str = Query("family", description="family|friends|couples|solo"),
+    current_user: str = Depends(get_current_user)
+):
+    trip = trips_collection.find_one({
+        "_id": ObjectId(trip_id),
+        "user": current_user
+    })
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    saved_places = list(
+        trips_collection.database.places.find({
+            "trip_id": trip_id
+        })
+    )
+
+    companion_context = {
+        "family": "Focus on safe, kid-friendly, relaxed attractions.",
+        "friends": "Focus on fun, nightlife, adventure, group activities.",
+        "couples": "Focus on romantic, scenic, sunset, intimate experiences.",
+        "solo": "Focus on cultural exploration, flexibility, local immersion."
+    }.get(companions, "Balanced travel style.")
+
+    prompt = f"""
+You are an advanced travel optimization AI.
+
+You MUST behave like a structured reasoning engine.
+You MUST calculate numbers precisely.
+You MUST NOT invent random prices.
+You MUST use ONLY the provided Trip Data.
+You MUST infer destination style (beach, metro city, island, mountain, desert, cultural, etc.) silently.
+You MUST adapt recommendations to geography and companion type.
+
+Companion Type: {companions}
+Companion Context: {companion_context}
+
+Trip Data:
+Destination: {trip.get("destination")}
+Budget: {trip.get("budget")}
+Final Cost: {trip.get("final_cost")}
+Days: {trip.get("days")}
+People: {trip.get("people")}
+Selected Transport: {trip.get("selected_transport")}
+Saved Places Count: {len(saved_places)}
+Itinerary: {trip.get("plan", {}).get("itinerary")}
+
+Strict Rules:
+- Use real numeric values from Trip Data.
+- Budget Difference = Budget - Final Cost.
+- Overloaded day = 6 or more activities.
+- Underutilized day = 3 or fewer activities.
+- Estimated savings MUST relate to real difference or transport cost.
+- Nearby recommendations must:
+  - Include a specific activity format (e.g., sunset yacht cruise, guided street food crawl, ATV jungle ride).
+  - Include a realistic venue type (e.g., marina, night market, rooftop bar, beach shack, heritage district).
+  - Match geography.
+  - Match companion energy level.
+  - Food recommendations must:
+  - Suggest 3 popular local foods.
+  - Include REAL restaurant examples.
+  - Match the destination.
+  - Feel authentic.
+  - Avoid generic phrases like “try local food”.
+
+
+Tasks:
+1. Return exact numeric budget analysis.
+2. Detect overloaded and underutilized days.
+3. Suggest ONE logical cost optimization.
+4. Suggest ONE itinerary restructuring.
+5. Suggest 3 highly contextual experiences.
+6. Suggest 3 popular local foods with real restaurant examples.
+
+Return ONLY valid JSON in this exact format:
+
+{{
+  "budget_analysis": {{
+    "budget": 0,
+    "final_cost": 0,
+    "difference": 0,
+    "status": ""
+  }},
+  "activity_analysis": {{
+    "overloaded_days": [],
+    "underutilized_days": []
+  }},
+  "cost_optimization": {{
+    "suggestion": "",
+    "estimated_savings": 0,
+    "reason": ""
+  }},
+  "itinerary_optimization": {{
+    "day": "",
+    "adjustment": "",
+    "reason": ""
+  }},
+  "nearby_recommendations": [
+    {{
+      "name": "",
+      "category": "",
+      "reason": ""
+    }}
+   ],
+   "food_recommendations": [
+    {{
+      "dish": "",
+      "restaurant": "",
+      "area": "",
+      "reason": ""
+    }}
+  ]
+}}
+
+No markdown.
+No explanations.
+Only JSON.
+"""
+
+    ai_text = generate_recommendations(prompt)
+
+    try:
+        parsed = json.loads(ai_text)
+    except:
+        start = ai_text.find("{")
+        end = ai_text.rfind("}")
+        if start != -1 and end != -1:
+            try:
+                parsed = json.loads(ai_text[start:end+1])
+            except:
+                return {"error": "AI output parsing failed"}
+        else:
+            return {"error": "AI output parsing failed"}
+
+    # 🔥 FORCE ALL MAIN FIELDS TO STRING
+  
+
+    return parsed
+
+
+
+
+
+
+# -------------------------------------------------
+# ADD FOOD TO TRIP
+# -------------------------------------------------
+@router.post("/{trip_id}/food/add")
+def add_food_to_trip(
+    trip_id: str,
+    data: dict,
+    current_user: str = Depends(get_current_user)
+):
+    trip = trips_collection.find_one({
+        "_id": ObjectId(trip_id),
+        "user": current_user
+    })
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    food = data.get("food")
+
+    if not food:
+        raise HTTPException(status_code=400, detail="Food data required")
+
+    trips_collection.update_one(
+        {"_id": ObjectId(trip_id)},
+        {"$push": {"saved_food": food}}
+    )
+
+    return {"message": "Food saved successfully"}
+
+
+
+
+
+
+
+# -------------------------------------------------
+# 8️⃣ ADD PLACE TO ITINERARY (Correct Version)
+# -------------------------------------------------
+@router.post("/{trip_id}/itinerary/add-place")
+def add_place_to_itinerary(
+    trip_id: str,
+    data: dict,
+    current_user: str = Depends(get_current_user)
+):
+    trip = trips_collection.find_one({
+        "_id": ObjectId(trip_id),
+        "user": current_user
+    })
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    day_number = data.get("day")
+    place = data.get("place")
+
+    if not day_number or not place:
+        raise HTTPException(status_code=400, detail="Day and place required")
+
+    itinerary = trip["plan"]["itinerary"]
+
+    for day in itinerary:
+        if day["day"] == day_number:
+            day["activities"].append({
+                "time": "Flexible",
+                "name": place["name"],
+                "lat": place["lat"],
+                "lon": place["lon"],
+                "type": place["type"]
+            })
+            break
+    else:
+        raise HTTPException(status_code=400, detail="Invalid day number")
+
+    trips_collection.update_one(
+        {"_id": ObjectId(trip_id)},
+        {"$set": {"plan.itinerary": itinerary}}
+    )
+
+    return {"message": "Place added to itinerary successfully"}
+
+
+
+
+
+
+
+# -------------------------------------------------
+# DELETE TRIP
+# -------------------------------------------------
+@router.delete("/{trip_id}")
+def delete_trip(
+    trip_id: str,
+    current_user: str = Depends(get_current_user)
+):
+    trip = trips_collection.find_one({
+        "_id": ObjectId(trip_id),
+        "user": current_user
+    })
+
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    trips_collection.delete_one({
+        "_id": ObjectId(trip_id)
+    })
+
+    return {"message": "Trip deleted successfully"}

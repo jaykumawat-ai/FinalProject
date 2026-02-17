@@ -39,6 +39,7 @@ export default function TripPlanner() {
         budget: Number(form.budget),
         days: Number(form.days),
         people: Number(form.people),
+        
       });
 
       setTripPlan(res.data);
@@ -143,8 +144,9 @@ export default function TripPlanner() {
   className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg
              hover:bg-blue-700 transition font-semibold"
 >
-  View Full Plan
+  View & Select Transport
 </button>
+
 
 
 

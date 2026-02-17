@@ -54,62 +54,22 @@ export default function TripDetails() {
       setLoading(false);
     }
   };
-  
 
-
-  const saveSelection = async () => {
-  if (!selectedTransport) {
-    alert("Select transport first");
-    return;
-  }
-
-  // 1️⃣ Instantly update UI
-  setTrip((prev) => ({
-    ...prev,
-    selected_transport: selectedTransport,
-  }));
-
-  // 2️⃣ Optional backend persistence
-  try {
-    await api.post(`/trips/${trip.id}/select-transport`, {
-      selected_transport: selectedTransport,
-    });
-  } catch (err) {
-    console.warn("Server doesn't support select endpoint yet");
-  }
-
-  // 3️⃣ Run AI with selected transport included
-  loadAIRecommendations(selectedCompanion);
-};
-
-
-
-
-
-  // inside TripDetails.jsx
-const confirmTrip = async () => {
-  try {
-    if (!selectedTransport) {
-      alert("Please select a transport option");
-      return;
+  const confirmTrip = async () => {
+    try {
+      if (!selectedTransport) {
+        alert("Please select a transport option");
+        return;
+      }
+      await api.post(`/trips/confirm/${trip.id}`, {
+        selected_transport: selectedTransport,
+      });
+      navigate(`/trips/${id}/review`);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to confirm trip");
     }
-
-    // call confirm endpoint
-    await api.post(`/trips/confirm/${trip.id}`, {
-      selected_transport: selectedTransport,
-    });
-
-    // refresh trip from server to get updated status & selected_transport
-    await fetchTrip();
-
-    // navigate to review (Summary). nice UX to show review after confirm.
-    navigate(`/trips/${trip.id}/review`);
-  } catch (err) {
-    console.error(err);
-    alert("Failed to confirm trip");
-  }
-};
-
+  };
 
   const deleteTrip = async () => {
     if (!window.confirm("Are you sure you want to delete this trip?")) return;
@@ -357,12 +317,7 @@ if (data.itinerary_optimization)
           })}
         </div>
 
-        
-
-
-
         {(trip.selected_transport || selectedTransport) && (
-          
           <div className="mt-6">
             <button
               onClick={() => {
@@ -602,8 +557,7 @@ if (data.itinerary_optimization)
                     setWalletBalance(res.data.remaining_balance);
                     setShowPaymentModal(false);
                     alert("🎉 Trip Booked Successfully!");
-                    navigate(`/trips/${trip.id}`);
-
+                    navigate(`/trips/${id}/review`);
                   } catch (err) {
                     console.error(err);
                     alert(err.response?.data?.detail || "Booking failed");

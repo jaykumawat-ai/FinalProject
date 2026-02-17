@@ -9,11 +9,15 @@ import {
 
 const links = [
   { label: "Dashboard", path: "/dashboard", icon: Home },
-  { label: "Trips", path: "/trips", icon: Plane },
-  { label: "Map", path: "/map", icon: Map },
+  { label: "Trips", path: "/my-trips", icon: Plane },
+  { label: "Explore", path: "/explore", icon: Map },
   { label: "Wallet", path: "/wallet", icon: Wallet },
   { label: "Profile", path: "/profile", icon: User },
-  { label: "Plan Trip", path: "/plan-trip", icon: Plane }
+  { label: "Plan Trip", path: "/plan-trip", icon: Plane },
+  { label: "Trip Guide", path: "/trip-guide", icon: Plane },
+  
+
+  
 ];
 
 export default function Sidebar() {

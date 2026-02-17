@@ -1,12 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
+from pydantic import BaseModel , Field
+from typing import Dict, Any
 
 from app.database import wallets_collection, transactions_collection
 from app.core.security import get_current_user
 from app.services.razorpay_client import razorpay_client
 
 
+
 router = APIRouter(tags=["Wallet"])
+
+# ---------- Pydantic models ----------
+class CreateOrderRequest(BaseModel):
+    amount: int = Field(..., gt=0)  # rupees
 
 
 # -------------------------------------------------
@@ -48,7 +55,7 @@ def get_wallet(current_user: str = Depends(get_current_user)):
 # -------------------------------------------------
 @router.post("/add")
 def add_money(
-    data: dict,
+    data: dict [str, Any],
     current_user: str = Depends(get_current_user)
 ):
     amount = data.get("amount")
@@ -93,38 +100,49 @@ def wallet_transactions(current_user: str = Depends(get_current_user)):
     return [serialize_transaction(txn) for txn in txns]
 
 
+
 # -------------------------------------------------
 # RAZORPAY ORDER CREATION
 # -------------------------------------------------
 @router.post("/create-order")
 def create_payment_order(
-    amount: int,
+    req: CreateOrderRequest,
     current_user: str = Depends(get_current_user)
 ):
     """
     Create Razorpay order
-    Amount is in rupees
+    Amount is in rupees (integer)
     """
-
+    amount = req.amount
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid amount")
 
-    order = razorpay_client.order.create({
-        "amount": amount * 100,  # Razorpay uses paise
-        "currency": "INR",
-        "payment_capture": 1
-    })
+    try:
+        # create order in Razorpay (amount in paise)
+        order = razorpay_client.order.create({
+            "amount": amount * 100,
+            "currency": "INR",
+            "payment_capture": 1
+        })
+    except Exception as e:
+        # show a friendly error and log the raw exception message
+        raise HTTPException(status_code=500, detail=f"Razorpay order creation failed: {str(e)}")
 
     return {
-        "order_id": order["id"],
+        "order_id": order.get("id"),
         "amount": amount,
         "currency": "INR",
-        "razorpay_key": razorpay_client.auth[0]
+        # razorpay_client.auth returns (key_id, key_secret)
+        "razorpay_key": getattr(razorpay_client, "auth", [None])[0] or razorpay_client.auth[0]
     }
 
+
+# -------------------------------------------------
+# RAZORPAY VERIFY PAYMENT
+# -------------------------------------------------
 @router.post("/verify-payment")
 def verify_payment(
-    data: dict,
+    data: Dict[str, Any],
     current_user: str = Depends(get_current_user)
 ):
     razorpay_order_id = data.get("razorpay_order_id")
@@ -135,20 +153,21 @@ def verify_payment(
     if not all([razorpay_order_id, razorpay_payment_id, razorpay_signature, amount]):
         raise HTTPException(status_code=400, detail="Invalid payment data")
 
+    # Verify signature using razorpay client library
     try:
         razorpay_client.utility.verify_payment_signature({
             "razorpay_order_id": razorpay_order_id,
             "razorpay_payment_id": razorpay_payment_id,
             "razorpay_signature": razorpay_signature
         })
-    except Exception:
-        raise HTTPException(status_code=400, detail="Payment verification failed")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Payment verification failed: {str(e)}")
 
     # Credit wallet
     wallets_collection.update_one(
         {"user": current_user},
         {
-            "$inc": {"balance": amount},
+            "$inc": {"balance": int(amount)},
             "$setOnInsert": {"created_at": datetime.utcnow()}
         },
         upsert=True
@@ -158,7 +177,7 @@ def verify_payment(
     transactions_collection.insert_one({
         "user": current_user,
         "type": "credit",
-        "amount": amount,
+        "amount": int(amount),
         "reason": "Razorpay top-up",
         "created_at": datetime.utcnow()
     })

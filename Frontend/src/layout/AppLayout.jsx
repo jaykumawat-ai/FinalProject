@@ -1,23 +1,26 @@
-import { Outlet } from "react-router-dom";
-import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
+import Navbar from "../components/Navbar";
+import { Outlet } from "react-router-dom";
 
 export default function AppLayout() {
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Top Navbar */}
-      <Navbar />
+    <div className="flex min-h-screen bg-gray-100">
+      
+      {/* Sidebar */}
+      <Sidebar />
 
-      <div className="flex">
-        {/* Sidebar (desktop only) */}
-        <Sidebar />
+      {/* Main Area */}
+      <div className="flex-1 flex flex-col">
 
-        {/* Main Content */}
-        <main className="flex-1 p-4 md:p-6">
+        {/* Top Navbar */}
+        <Navbar />
+
+        {/* Page Content */}
+        <main className="flex-1 p-6">
           <Outlet />
         </main>
+
       </div>
     </div>
   );
 }
- 
