@@ -32,30 +32,19 @@ export default function SummaryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const fetchTrip = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get(`/trips/${id}/review`);
-      setTrip(res.data);
-    } catch (err) {
-      console.warn(
-        "Primary summary endpoint failed, falling back to list fetch.",
-        err,
-      );
-      try {
-        const res2 = await api.get("/trips/my-trips");
-        const found = Array.isArray(res2.data)
-          ? res2.data.find((t) => String(t.id) === String(id))
-          : null;
-        setTrip(found || null);
-      } catch (err2) {
-        console.error("Failed to load trip (both endpoints).", err2);
-        setTrip(null);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+const fetchTrip = async () => {
+  setLoading(true);
+  try {
+    const res = await api.get("/trips/my-trips");
+    const found = res.data.find((t) => String(t.id) === String(id));
+    setTrip(found || null);
+  } catch (err) {
+    console.error("Failed to load trip", err);
+    setTrip(null);
+  } finally {
+    setLoading(false);
+  }
+};
   const loadAIRecommendations = async (companionType) => {
     if (!trip) return;
 
@@ -188,12 +177,7 @@ export default function SummaryPage() {
             {showMap ? "Hide Map" : "Explore Nearby Places"}
           </button>
 
-          <button
-            onClick={() => navigate(`/trips/${id}/setup`)}
-            className="px-4 py-2 border rounded-lg hover:bg-gray-50 transition"
-          >
-            Proceed to Trip Details
-          </button>
+          
 
           {/* optional: a small status label */}
           <span className="ml-auto text-sm text-gray-500">
@@ -286,12 +270,7 @@ export default function SummaryPage() {
           Proceed to Booking
         </button>
 
-        <button
-          onClick={() => setShowCompanionModal(true)}
-          className="bg-purple-600 text-white px-6 py-3 rounded-xl"
-        >
-          Generate AI Insights
-        </button>
+        
       </div>
 
       {/* MAP: show only if user toggled */}

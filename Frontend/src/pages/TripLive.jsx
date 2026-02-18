@@ -5,7 +5,7 @@ import api from "../api/api";
 import { Plane, Calendar, Users, IndianRupee } from "lucide-react";
 import TripMap from "../components/TripMap";
 
-export default function TripDetails() {
+export default function TripLive() {
   const { id } = useParams();
   const navigate = useNavigate();
 

@@ -65,7 +65,7 @@ export default function Booking() {
 
         <div className="flex gap-4 mt-6">
           <button
-            onClick={() => navigate(`/trips/${id}/review`)}
+            onClick={() => navigate(-1)}
             className="flex-1 border rounded py-3"
           >
             Back
