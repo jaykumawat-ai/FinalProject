@@ -70,7 +70,13 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <StatCard icon={<Plane size={22} />} title="Total Trips" value={trips?.length ?? 0} />
           <StatCard icon={<Wallet size={22} />} title="Wallet Balance" value={`₹ ${wallet}`} />
-          <StatCard icon={<Map size={22} />} title="Explore Places" value="Interactive Map" />
+          <div onClick={() => navigate("/explore")} className="cursor-pointer">
+  <StatCard
+    icon={<Map size={22} />}
+    title="Explore Places"
+    value="Interactive Map"
+  />
+</div>
         </div>
 
         {/* TRIPS */}

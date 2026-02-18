@@ -1,16 +1,24 @@
 // src/pages/ExploreMap.jsx
+import TripMap from "../components/TripMap";
 import { useEffect, useRef, useState } from "react";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Popup,
-  useMap
-} from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import api from "../api/api";
+
+function getDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 // animate map when center changes
 function MapFlyTo({ center, zoom = 13 }) {
@@ -32,6 +40,9 @@ export default function ExploreMap() {
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState(ALL_CATEGORIES);
 
+  const [travelMode, setTravelMode] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [nearbyAlert, setNearbyAlert] = useState(null);
   const mapRef = useRef(null);
 
   // --- City search (Nominatim)
@@ -41,7 +52,7 @@ export default function ExploreMap() {
     try {
       setLoading(true);
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}`
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}`,
       );
       const data = await res.json();
 
@@ -56,7 +67,6 @@ export default function ExploreMap() {
 
       setCenter(newCenter);
       await fetchNearby(lat, lon, radius);
-
     } catch (err) {
       console.error("City search failed", err);
       alert("City lookup failed");
@@ -73,13 +83,12 @@ export default function ExploreMap() {
           lat,
           lon,
           radius: r,
-          category: categories.join(",")
+          category: categories.join(","),
         },
       });
 
       const results = res.data?.places || [];
       setPlaces(results);
-
     } catch (err) {
       console.error("Failed to load nearby places", err);
       setPlaces([]);
@@ -99,6 +108,45 @@ export default function ExploreMap() {
     });
   };
 
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setUserLocation([pos.coords.latitude, pos.coords.longitude]);
+      },
+      (err) => {
+        console.warn("GPS error", err);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 5000,
+      },
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
+
+  useEffect(() => {
+    if (!travelMode || !userLocation || places.length === 0) return;
+
+    for (const p of places) {
+      const lat = Number(p.lat);
+      const lon = Number(p.lon);
+
+      const dist = getDistanceKm(userLocation[0], userLocation[1], lat, lon);
+
+      if (dist <= 0.5) {
+        setNearbyAlert({
+          ...p,
+          distance: dist.toFixed(2),
+        });
+        break;
+      }
+    }
+  }, [userLocation, travelMode, places]);
+
   const selectAll = () => setCategories(ALL_CATEGORIES);
 
   // default marker fix
@@ -116,7 +164,6 @@ export default function ExploreMap() {
 
   return (
     <div className="w-full h-screen flex flex-col bg-gray-100">
-
       {/* HEADER */}
       <div className="bg-white shadow px-6 py-4 flex items-center gap-4">
         <h1 className="text-2xl font-bold">Global Explore 🌍</h1>
@@ -143,7 +190,6 @@ export default function ExploreMap() {
 
       {/* CONTROLS */}
       <div className="bg-white p-4 shadow-sm flex items-center gap-6 flex-wrap">
-
         <div>
           <label className="text-sm block">Radius: {radius} km</label>
           <input
@@ -175,6 +221,8 @@ export default function ExploreMap() {
             All
           </button>
 
+         
+
           {ALL_CATEGORIES.map((cat) => (
             <button
               key={cat}
@@ -190,6 +238,26 @@ export default function ExploreMap() {
             </button>
           ))}
         </div>
+         <div className="flex items-center gap-3 ml-6">
+            <span className="text-sm font-medium">Travel Mode</span>
+
+            <button
+              onClick={() => setTravelMode((v) => !v)}
+              className={`w-12 h-6 rounded-full relative transition ${
+                travelMode ? "bg-pink-500" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 bg-white rounded-full transition ${
+                  travelMode ? "right-1" : "left-1"
+                }`}
+              />
+            </button>
+
+            <span className="text-xs text-gray-500">
+              {travelMode ? "ON" : "OFF"}
+            </span>
+          </div>
 
         <div className="ml-auto text-sm">
           {loading ? "Loading…" : `${places.length} places`}
@@ -215,7 +283,10 @@ export default function ExploreMap() {
               if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
               return (
-                <Marker key={`${p.name ?? i}-${lat}-${lon}`} position={[lat, lon]}>
+                <Marker
+                  key={`${p.name ?? i}-${lat}-${lon}`}
+                  position={[lat, lon]}
+                >
                   <Popup>
                     <strong>{p.name}</strong>
                     <div className="text-xs text-gray-600">{p.type}</div>
@@ -229,6 +300,26 @@ export default function ExploreMap() {
           </MarkerClusterGroup>
         </MapContainer>
       </div>
+      {nearbyAlert && (
+        <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 1200 }}>
+          <div className="bg-white border shadow-lg rounded p-4 w-72">
+            <strong className="block mb-1">📍 Nearby Place</strong>
+            <div className="text-sm font-medium">{nearbyAlert.name}</div>
+            <div className="text-xs text-gray-600">
+              {nearbyAlert.type} • {nearbyAlert.distance} km
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => setNearbyAlert(null)}
+                className="flex-1 border py-1 rounded text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

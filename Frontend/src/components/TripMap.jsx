@@ -79,11 +79,18 @@ function MapTracker({ onMove }) {
   return null;
 }
 
-function RecenterMap({ center }) {
+function MapFlyTo({ center, zoom = 13 }) {
   const map = useMap();
+
   useEffect(() => {
-    if (center) map.setView(center);
-  }, [center, map]);
+    if (!center) return;
+
+    map.flyTo(center, zoom, {
+      animate: true,
+      duration: 0.8,
+    });
+  }, [center, map, zoom]);
+
   return null;
 }
 
@@ -91,19 +98,44 @@ function RecenterMap({ center }) {
 
 const ALL_CATEGORIES = ["restaurant", "cafe", "attraction", "historic"];
 
-
-export default function TripMap({ tripId }) {
+export default function TripMap({
+  tripId,
+  mode = "trip", // 👈 ADD THIS
+  externalCenter,
+  externalRadius,
+  externalCategories,
+  externalTravelMode,
+}) {
   const [places, setPlaces] = useState([]);
   const [savedPlaces, setSavedPlaces] = useState([]);
   const [tripDays, setTripDays] = useState(5);
-  const isGlobal = tripId?.startsWith("global-");
+  const isGlobal = mode === "explore";
+  const [city, setCity] = useState("");
 
   // keep persistent center per trip if available
-  const [center, setCenter] = useState(() => getStoredCenter(tripId));
+  const [center, setCenter] = useState(
+    () => externalCenter ?? getStoredCenter(tripId),
+  );
+
+  useEffect(() => {
+    if (externalCenter) {
+      setCenter(externalCenter);
+    }
+  }, [externalCenter]);
+
   const [mapCenter, setMapCenter] = useState(null);
 
-  const [radius, setRadius] = useState(5);
-  const [categories, setCategories] = useState(ALL_CATEGORIES);
+  const [radius, setRadius] = useState(externalRadius ?? 5);
+
+  useEffect(() => {
+    if (externalRadius != null) setRadius(externalRadius);
+  }, [externalRadius]);
+  const [categories, setCategories] = useState(
+    externalCategories ?? ALL_CATEGORIES,
+  );
+  useEffect(() => {
+    if (externalCategories) setCategories(externalCategories);
+  }, [externalCategories]);
 
   const [userLocation, setUserLocation] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null);
@@ -122,7 +154,11 @@ export default function TripMap({ tripId }) {
   const mapRef = useRef(null);
 
   // Travel Mode / Notifications
-  const [travelMode, setTravelMode] = useState(false);
+  const [travelMode, setTravelMode] = useState(externalTravelMode ?? false);
+  useEffect(() => {
+    if (externalTravelMode != null) setTravelMode(externalTravelMode);
+  }, [externalTravelMode]);
+
   const [notifyCategories, setNotifyCategories] = useState([
     "restaurant",
     "cafe",
@@ -131,17 +167,58 @@ export default function TripMap({ tripId }) {
   const alertedRef = useRef(new Set());
   const [nearbyAlert, setNearbyAlert] = useState(null);
 
- // If this is a global map (no stored trip center),
+  // If this is a global map (no stored trip center),
   // set default India center
-useEffect(() => {
-  if (!isGlobal) return;
+  useEffect(() => {
+    if (!isGlobal) return;
 
-  const defaultIndia = [22.9734, 78.6569];
-  setCenter(defaultIndia);
-}, [isGlobal]);
+    const defaultIndia = [22.9734, 78.6569];
+    setCenter(defaultIndia);
+  }, [isGlobal]);
 
+  const handleSearchCity = async () => {
+    if (!city) return;
 
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}`,
+      );
 
+      const data = await res.json();
+
+      if (!data?.length) {
+        alert("City not found");
+        return;
+      }
+
+      const lat = Number(data[0].lat);
+      const lon = Number(data[0].lon);
+
+      setCenter([lat, lon]);
+
+      // also reload nearby
+      loadPlaces({ overrideLat: lat, overrideLon: lon });
+    } catch {
+      alert("City search failed");
+    }
+  };
+
+  const onSaveExplorePlace = async () => {
+    if (!selectedPlace) return;
+
+    try {
+      await api.post("/explore/save", {
+        name: selectedPlace.name,
+        lat: selectedPlace.lat,
+        lon: selectedPlace.lon,
+        type: selectedPlace.type,
+      });
+
+      alert("Saved to Explore!");
+    } catch {
+      alert("Failed to save");
+    }
+  };
 
   /* ================= FETCH NEARBY (SAFE) ================= */
   const loadPlaces = useCallback(
@@ -158,15 +235,15 @@ useEffect(() => {
           category: categories.join(","),
         };
 
-       if (overrideLat != null && overrideLon != null) {
-  params.lat = overrideLat;
-  params.lon = overrideLon;
-} else if (isGlobal && center) {
-  params.lat = center[0];
-  params.lon = center[1];
-} else if (!isGlobal) {
-  params.trip_id = tripId;
-}
+        if (overrideLat != null && overrideLon != null) {
+          params.lat = overrideLat;
+          params.lon = overrideLon;
+        } else if (isGlobal && center) {
+          params.lat = center[0];
+          params.lon = center[1];
+        } else if (!isGlobal) {
+          params.trip_id = tripId;
+        }
 
         const res = await api.get("/discover/nearby", { params });
         if (thisRequestId !== requestIdRef.current) return;
@@ -178,7 +255,7 @@ useEffect(() => {
           setPlaces(results);
         } else {
           // fallback to last good places if any
-          setPlaces((prev) => prev.length ? prev : results);
+          setPlaces((prev) => (prev.length ? prev : results));
         }
 
         // set initial center only if user hasn't stored one for this trip
@@ -195,20 +272,21 @@ useEffect(() => {
         setLoading(false);
       }
     },
-    [tripId, radius, categories]
+    [tripId, radius, categories, isGlobal, center],
   );
 
   // Call loadPlaces when dependencies change (tripId, radius, categories)
   useEffect(() => {
     loadPlaces();
-  }, [loadPlaces]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripId, radius, categories.join(",")]);
 
   /* ================= LOAD SAVED ================= */
   useEffect(() => {
-  if (isGlobal) return; // 🚀 Skip saved places in global
+    if (isGlobal) return; // 🚀 Skip saved places in global
 
-  let mounted = true;
-  async function loadSaved() {
+    let mounted = true;
+    async function loadSaved() {
       try {
         const data = await getTripPlaces(tripId);
         if (!mounted) return;
@@ -223,27 +301,22 @@ useEffect(() => {
     };
   }, [tripId]);
 
-
-
-
-
   useEffect(() => {
-  if (isGlobal) return;
+    if (isGlobal) return;
 
-  async function loadTripMeta() {
-    try {
-      const res = await api.get(`/trips/summary/${tripId}`);
-      if (res.data?.days) {
-        setTripDays(res.data.days);
+    async function loadTripMeta() {
+      try {
+        const res = await api.get(`/trips/summary/${tripId}`);
+        if (res.data?.days) {
+          setTripDays(res.data.days);
+        }
+      } catch {
+        console.warn("Failed to load trip meta");
       }
-    } catch  {
-      console.warn("Failed to load trip meta");
     }
-  }
 
-  loadTripMeta();
-}, [tripId]);
-
+    loadTripMeta();
+  }, [tripId]);
 
   /* ================= GPS: watchPosition for live updates ================= */
   useEffect(() => {
@@ -260,7 +333,7 @@ useEffect(() => {
         enableHighAccuracy: true,
         maximumAge: 0,
         timeout: 5000,
-      }
+      },
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
@@ -289,7 +362,7 @@ useEffect(() => {
         userLocation[0],
         userLocation[1],
         p.lat,
-        p.lon
+        p.lon,
       );
 
       if (dist <= 0.5) {
@@ -326,8 +399,8 @@ useEffect(() => {
       prev.length === ALL_CATEGORIES.length
         ? [cat]
         : prev.includes(cat)
-        ? prev.filter((c) => c !== cat)
-        : [...prev, cat]
+          ? prev.filter((c) => c !== cat)
+          : [...prev, cat],
     );
   };
 
@@ -353,28 +426,24 @@ useEffect(() => {
 
   // Remove saved place (calls backend delete endpoint).
   // Backend expected: DELETE /trips/{tripId}/places/{placeKey}
- const removeSavedPlace = async (place) => {
-  if (!place || !place.name) {
-    console.warn("removeSavedPlace: invalid place", place);
-    return;
-  }
+  const removeSavedPlace = async (place) => {
+    if (!place || !place.name) {
+      console.warn("removeSavedPlace: invalid place", place);
+      return;
+    }
 
-  try {
-    await api.delete(
-      `/trips/${tripId}/places`,
-      { params: { name: place.name } }
-    );
+    try {
+      await api.delete(`/trips/${tripId}/places`, {
+        params: { name: place.name },
+      });
 
-    const updated = await getTripPlaces(tripId);
-    setSavedPlaces(updated || []);
-  } catch (err) {
-    console.error("Failed to remove saved place", err);
-    setError("Failed to remove saved place");
-  }
-};
-
-
-
+      const updated = await getTripPlaces(tripId);
+      setSavedPlaces(updated || []);
+    } catch (err) {
+      console.error("Failed to remove saved place", err);
+      setError("Failed to remove saved place");
+    }
+  };
 
   // Open Google Maps directions (origin optional)
   function openGoogleDirections(destLat, destLon) {
@@ -384,7 +453,7 @@ useEffect(() => {
         : "";
     const destination = `${destLat},${destLon}`;
     let url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
-      destination
+      destination,
     )}`;
     if (origin) {
       url += `&origin=${encodeURIComponent(origin)}`;
@@ -397,19 +466,21 @@ useEffect(() => {
   // derive saved names set from savedPlaces state
   const savedNames = useMemo(
     () => new Set((savedPlaces || []).map((p) => p.name)),
-    [savedPlaces]
+    [savedPlaces],
   );
 
   const filteredPlaces = useMemo(
     () => (places || []).filter((p) => !savedNames.has(p.name)),
-    [places, savedNames]
+    [places, savedNames],
   );
 
   const zoomByRadius = (() => {
     if (radius <= 3) return 15;
     if (radius <= 6) return 14;
     if (radius <= 10) return 13;
-    return 12;
+    if (radius <= 20) return 12;
+    if (radius <= 35) return 11;
+    return 10;
   })();
 
   /* ================= UI: helpers for actions ================= */
@@ -418,7 +489,7 @@ useEffect(() => {
     if (!mapRef.current) return;
     try {
       mapRef.current.invalidateSize();
-    } catch  {
+    } catch {
       /* ignore */
     }
     mapRef.current.flyTo([lat, lon], zoom, { animate: true, duration: 0.8 });
@@ -427,15 +498,40 @@ useEffect(() => {
   /* ================= RENDER ================= */
 
   return (
-    <div className="flex w-full h-[600px] overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-gray-100">
+      {isGlobal && (
+        <div className="bg-white shadow px-6 py-4 flex items-center">
+          <h1 className="text-2xl font-bold">Global Explore 🌍</h1>
+          <div className="ml-auto text-sm text-gray-500">
+            Discover places anywhere
+          </div>
+        </div>
+      )}
       {/* LEFT: controls + map */}
-      <div className="flex-1 flex flex-col gap-4 p-4 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col gap-6 p-6 overflow-hidden">
         {/* Controls container */}
-        <div className="bg-white p-3 rounded shadow-sm space-y-3">
+        <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
+          {isGlobal && (
+            <div className="flex gap-3">
+              <input
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Search city..."
+                className="border px-3 py-2 rounded w-64"
+              />
+              <button
+                onClick={handleSearchCity}
+                className="bg-green-600 text-white px-4 py-2 rounded"
+              >
+                Search
+              </button>
+            </div>
+          )}
+
           {/* Filters */}
           <div className="flex gap-2 flex-wrap items-center">
             <button
-         onClick={handleAllClick}
+              onClick={handleAllClick}
               className={`px-3 py-1 rounded ${
                 categories.length === ALL_CATEGORIES.length
                   ? "bg-green-700 text-white"
@@ -451,7 +547,8 @@ useEffect(() => {
                 key={c}
                 onClick={() => handleCategoryClick(c)}
                 className={`px-3 py-1 rounded border ${
-                  categories.includes(c) && categories.length !== ALL_CATEGORIES.length
+                  categories.includes(c) &&
+                  categories.length !== ALL_CATEGORIES.length
                     ? "bg-green-600 text-white"
                     : ""
                 }`}
@@ -460,12 +557,14 @@ useEffect(() => {
               </button>
             ))}
 
-            <button
-              onClick={() => setShowSavedPanel(true)}
-              className="ml-auto px-3 py-1 border rounded bg-white hover:bg-gray-50"
-            >
-              📍 Saved Places ({savedPlaces.length})
-            </button>
+            {!isGlobal && (
+              <button
+                onClick={() => setShowSavedPanel(true)}
+                className="ml-auto px-3 py-1 border rounded bg-white hover:bg-gray-50"
+              >
+                📍 Saved Places ({savedPlaces.length})
+              </button>
+            )}
           </div>
 
           {/* Travel Mode + notification category toggles */}
@@ -486,7 +585,9 @@ useEffect(() => {
               />
             </button>
 
-            <span className="text-xs text-gray-500">{travelMode ? "ON" : "OFF"}</span>
+            <span className="text-xs text-gray-500">
+              {travelMode ? "ON" : "OFF"}
+            </span>
           </div>
 
           {travelMode && (
@@ -496,11 +597,15 @@ useEffect(() => {
                   key={cat}
                   onClick={() =>
                     setNotifyCategories((prev) =>
-                      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+                      prev.includes(cat)
+                        ? prev.filter((c) => c !== cat)
+                        : [...prev, cat],
                     )
                   }
                   className={`px-2 py-1 text-xs rounded border ${
-                    notifyCategories.includes(cat) ? "bg-green-600 text-white" : ""
+                    notifyCategories.includes(cat)
+                      ? "bg-green-600 text-white"
+                      : ""
                   }`}
                 >
                   {cat}
@@ -516,7 +621,7 @@ useEffect(() => {
               <input
                 type="range"
                 min="1"
-                max="20"
+                max={isGlobal ? 50 : 20}
                 value={radius}
                 onChange={(e) => setRadius(Number(e.target.value))}
               />
@@ -531,15 +636,19 @@ useEffect(() => {
                   : "bg-green-700 text-white"
               }`}
             >
-              {inFlightRef.current || loading ? "Searching…" : "🔍 Search this area"}
+              {inFlightRef.current || loading
+                ? "Searching…"
+                : "🔍 Search this area"}
             </button>
 
-            <div className="ml-auto text-sm">{loading ? "Loading…" : `${places.length} places`}</div>
+            <div className="ml-auto text-sm">
+              {loading ? "Loading…" : `${places.length} places`}
+            </div>
           </div>
         </div>
 
         {/* MAP container */}
-        <div className="relative flex-1 min-h-0">
+        <div className="relative flex-1 min-h-0 rounded-xl overflow-hidden shadow-md">
           {center ? (
             <MapContainer
               center={center}
@@ -547,7 +656,7 @@ useEffect(() => {
               whenCreated={(map) => {
                 mapRef.current = map;
               }}
-              style={{ height: "100%", width: "100%", zIndex: 0 }}
+              style={{ height: "100%", width: "100%" }}
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
@@ -555,11 +664,13 @@ useEffect(() => {
                 onMove={(c) => {
                   setMapCenter(c);
                   // Persist last viewed center so refreshing returns to same view
-                  storeCenter(tripId, c);
+                  if (!isGlobal && tripId) {
+                    storeCenter(tripId, c);
+                  }
                 }}
               />
 
-              <RecenterMap center={center} />
+              <MapFlyTo center={center} zoom={zoomByRadius} />
 
               {userLocation && (
                 <CircleMarker center={userLocation} radius={8} color="blue">
@@ -571,7 +682,11 @@ useEffect(() => {
                 {savedPlaces.map((p) => {
                   const key = `${p.id ?? p.place_id ?? p.name}-${p.lat}-${p.lon}`;
                   return (
-                    <Marker key={`saved-${key}`} position={[p.lat, p.lon]} icon={savedIcon}>
+                    <Marker
+                      key={`saved-${key}`}
+                      position={[p.lat, p.lon]}
+                      icon={savedIcon}
+                    >
                       <Popup>
                         <strong>{p.name}</strong>
                         <br />
@@ -600,7 +715,9 @@ useEffect(() => {
               </MarkerClusterGroup>
             </MapContainer>
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-500">Loading map…</div>
+            <div className="flex items-center justify-center h-full text-gray-500">
+              Loading map…
+            </div>
           )}
 
           {/* Floating locate button */}
@@ -621,7 +738,7 @@ useEffect(() => {
                     },
                     () => {
                       /* ignore errors shown to user in console */
-                    }
+                    },
                   );
                 }
               }}
@@ -638,7 +755,9 @@ useEffect(() => {
           <div className="bg-white p-4 rounded-lg shadow-md border">
             {/* Header */}
             <div className="flex items-start justify-between">
-              <h3 className="text-lg font-semibold pr-4">{selectedPlace.name}</h3>
+              <h3 className="text-lg font-semibold pr-4">
+                {selectedPlace.name}
+              </h3>
 
               <button
                 onClick={() => setSelectedPlace(null)}
@@ -658,80 +777,89 @@ useEffect(() => {
               </span>
             </div>
 
-            <p className="mt-2 text-sm text-gray-600">{selectedPlace.distance_km} km</p>
+            <p className="mt-2 text-sm text-gray-600">
+              {selectedPlace.distance_km} km
+            </p>
 
-           {/* Actions */}
-<div className="mt-4 flex gap-3">
-  <button
-    onClick={onSavePlace}
-    disabled={saving || savedNames.has(selectedPlace.name)}
-    className={`flex-1 py-2 rounded font-medium ${
-      savedNames.has(selectedPlace.name)
-        ? "bg-green-700 text-white"
-        : "bg-green-600 hover:bg-green-700 text-white"
-    }`}
-  >
-    {savedNames.has(selectedPlace.name)
-      ? "Saved ✓"
-      : saving
-      ? "Saving…"
-      : "Save to Trip"}
-  </button>
+            {/* Actions */}
+            <div className="mt-4 flex gap-3">
+              {isGlobal ? (
+                <button
+                  onClick={onSaveExplorePlace}
+                  className="flex-1 py-2 rounded font-medium bg-green-600 text-white"
+                >
+                  Save Place
+                </button>
+              ) : (
+                <button
+                  onClick={onSavePlace}
+                  disabled={saving || savedNames.has(selectedPlace.name)}
+                  className="flex-1 py-2 rounded font-medium bg-green-600 text-white"
+                >
+                  {savedNames.has(selectedPlace.name)
+                    ? "Saved ✓"
+                    : saving
+                      ? "Saving…"
+                      : "Save to Trip"}
+                </button>
+              )}
 
-  <button
-    onClick={() => {
-      openGoogleDirections(selectedPlace.lat, selectedPlace.lon);
-    }}
-    className="flex-1 border rounded py-2 hover:bg-gray-50"
-  >
-    🌍 Open in Google Maps
-  </button>
-</div>
+              <button
+                onClick={() => {
+                  openGoogleDirections(selectedPlace.lat, selectedPlace.lon);
+                }}
+                className="flex-1 border rounded py-2 hover:bg-gray-50"
+              >
+                🌍 Open in Google Maps
+              </button>
+            </div>
 
-{/* 👇 ADD THIS RIGHT BELOW ACTIONS */}
-<select
-  onChange={async (e) => {
-    if (isGlobal) return;
+            {/* 👇 ADD THIS RIGHT BELOW ACTIONS */}
+            {!isGlobal && (
+              <select
+                onChange={async (e) => {
+                  if (isGlobal) return;
 
-    const day = Number(e.target.value);
-    if (!day) return;
+                  const day = Number(e.target.value);
+                  if (!day) return;
 
-    try {
-      await api.post(`/trips/${tripId}/itinerary/add-place`, {
-        day,
-        place: {
-          name: selectedPlace.name,
-          lat: selectedPlace.lat,
-          lon: selectedPlace.lon,
-          type: selectedPlace.type,
-        },
-      });
+                  try {
+                    await api.post(`/trips/${tripId}/itinerary/add-place`, {
+                      day,
+                      place: {
+                        name: selectedPlace.name,
+                        lat: selectedPlace.lat,
+                        lon: selectedPlace.lon,
+                        type: selectedPlace.type,
+                      },
+                    });
 
-      alert("Added to itinerary!");
-    } catch  {
-      alert("Failed to add to itinerary");
-    }
-  }}
-
-  className="border p-2 rounded mt-3 w-full"
->
-  <option value="">Assign to Day...</option>
-  {Array.from({ length: tripDays }, (_, i) => i + 1).map((d) => (
-    <option key={d} value={d}>
-      Day {d}
-    </option>
-  ))}
-</select>
-
+                    alert("Added to itinerary!");
+                  } catch {
+                    alert("Failed to add to itinerary");
+                  }
+                }}
+                className="border p-2 rounded mt-3 w-full"
+              >
+                <option value="">Assign to Day...</option>
+                {Array.from({ length: tripDays }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    Day {d}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         )}
       </div>
 
       {/* RIGHT: Saved places collapsible panel */}
-      {showSavedPanel && (
+      {!isGlobal && showSavedPanel && (
         <div className="w-80 border-l bg-white shadow-xl overflow-auto">
           <div className="p-4 border-b flex justify-between items-center">
-            <h3 className="font-semibold">Saved Places ({savedPlaces.length})</h3>
+            <h3 className="font-semibold">
+              Saved Places ({savedPlaces.length})
+            </h3>
             <button onClick={() => setShowSavedPanel(false)}>Close</button>
           </div>
 
@@ -747,7 +875,9 @@ useEffect(() => {
                   <div className="flex justify-between items-start">
                     <div>
                       <strong>{p.name}</strong>
-                      <div className="text-sm text-gray-600">{p.type} • {p.distance_km} km</div>
+                      <div className="text-sm text-gray-600">
+                        {p.type} • {p.distance_km} km
+                      </div>
                     </div>
 
                     <div className="flex flex-col gap-2 ml-2">
@@ -755,7 +885,11 @@ useEffect(() => {
                         onClick={() => {
                           const lat = Number(p.lat);
                           const lon = Number(p.lon);
-                          if (!mapRef.current || Number.isNaN(lat) || Number.isNaN(lon)) {
+                          if (
+                            !mapRef.current ||
+                            Number.isNaN(lat) ||
+                            Number.isNaN(lon)
+                          ) {
                             console.warn("Map not ready or invalid coords");
                             return;
                           }
@@ -763,14 +897,19 @@ useEffect(() => {
                           setTimeout(() => {
                             try {
                               mapRef.current.invalidateSize();
-                            } catch  {
+                            } catch {
                               /* ignore */
                             }
-                            mapRef.current.flyTo([lat, lon], 15, { animate: true, duration: 0.8 });
+                            mapRef.current.flyTo([lat, lon], 15, {
+                              animate: true,
+                              duration: 0.8,
+                            });
                             setTimeout(() => {
                               L.popup({ autoClose: true })
                                 .setLatLng([lat, lon])
-                                .setContent(`<strong>${p.name}</strong><br/>Saved • ${p.distance_km} km`)
+                                .setContent(
+                                  `<strong>${p.name}</strong><br/>Saved • ${p.distance_km} km`,
+                                )
                                 .openOn(mapRef.current);
                             }, 350);
                           }, 120);
@@ -801,7 +940,9 @@ useEffect(() => {
           <div className="bg-white border shadow-lg rounded p-4 w-72">
             <strong className="block mb-1">📍 Nearby Place</strong>
             <div className="text-sm font-medium">{nearbyAlert.name}</div>
-            <div className="text-xs text-gray-600">{normalizeType(nearbyAlert.type)} • {nearbyAlert.distance} km</div>
+            <div className="text-xs text-gray-600">
+              {normalizeType(nearbyAlert.type)} • {nearbyAlert.distance} km
+            </div>
 
             <div className="mt-3 flex gap-2">
               <button
@@ -815,7 +956,10 @@ useEffect(() => {
                 View in Google Maps
               </button>
 
-              <button onClick={() => setNearbyAlert(null)} className="flex-1 border py-1 rounded text-sm">
+              <button
+                onClick={() => setNearbyAlert(null)}
+                className="flex-1 border py-1 rounded text-sm"
+              >
                 Ignore
               </button>
             </div>
@@ -826,7 +970,9 @@ useEffect(() => {
       {/* error notice */}
       {error && (
         <div style={{ position: "fixed", left: 12, bottom: 12, zIndex: 1200 }}>
-          <div className="bg-red-100 text-red-800 px-3 py-2 rounded">{error}</div>
+          <div className="bg-red-100 text-red-800 px-3 py-2 rounded">
+            {error}
+          </div>
         </div>
       )}
     </div>

@@ -10,7 +10,7 @@ import MyTrips from "./pages/MyTrips";
 import Summary from "./pages/Summary"; // review (AI optional)
 import Wallet from "./pages/Wallet";
 import AppLayout from "./layout/AppLayout";
-import MapPage from "./pages/ExploreMap";
+import TripMap from "./components/TripMap";
 import Profile from "./pages/Profile";
 import TripGuide from "./pages/TripGuide";
 import TripLive from "./pages/TripLive";
@@ -47,7 +47,7 @@ export default function App() {
 
         <Route path="/trip-guide" element={<TripGuide />} />
         <Route path="/wallet" element={<Wallet />} />
-        <Route path="/explore" element={<MapPage />} />
+        <Route path="/explore" element={<TripMap mode="explore" />} />
         <Route path="/profile" element={<Profile />} />
       </Route>
     </Routes>

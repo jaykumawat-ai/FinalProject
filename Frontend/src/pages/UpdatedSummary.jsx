@@ -31,15 +31,15 @@ export default function UpdatedSummary() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">
-        Updated Trip Summary ✨
-      </h1>
+      <h1 className="text-3xl font-bold mb-6">Updated Trip Summary ✨</h1>
 
       <div className="bg-white shadow rounded-xl p-6 mb-6">
         <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
           <MapPin size={18} /> Route
         </h2>
-        <p>{trip.source} → {trip.destination}</p>
+        <p>
+          {trip.source} → {trip.destination}
+        </p>
       </div>
 
       <div className="bg-white shadow rounded-xl p-6 mb-6">
@@ -78,11 +78,18 @@ export default function UpdatedSummary() {
       </div>
 
       <button
-        onClick={() => navigate(`/trips/${id}/booking`)}
-        className="bg-green-600 text-white px-6 py-3 rounded-xl"
-      >
-        Proceed to Booking
-      </button>
+    onClick={() => navigate(`/trips/${id}/booking`)}
+    className="bg-green-600 text-white px-6 py-3 rounded-xl"
+  >
+    Proceed to Booking
+  </button>
+
+  <button
+    onClick={() => navigate(`/trips/${id}/review`)}
+    className="ml-4 border px-6 py-3 rounded-xl"
+  >
+    Back to Summary
+  </button>
     </div>
   );
 }

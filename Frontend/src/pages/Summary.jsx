@@ -26,25 +26,28 @@ export default function SummaryPage() {
   const [showCompanionModal, setShowCompanionModal] = useState(false);
   const [selectedCompanion, setSelectedCompanion] = useState("family");
   const [nearbySuggestions, setNearbySuggestions] = useState([]);
+  const [selectedFoods, setSelectedFoods] = useState([]);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [savedFoodsBackend, setSavedFoodsBackend] = useState([]);
 
   useEffect(() => {
     fetchTrip();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-const fetchTrip = async () => {
-  setLoading(true);
-  try {
-    const res = await api.get("/trips/my-trips");
-    const found = res.data.find((t) => String(t.id) === String(id));
-    setTrip(found || null);
-  } catch (err) {
-    console.error("Failed to load trip", err);
-    setTrip(null);
-  } finally {
-    setLoading(false);
-  }
-};
+  const fetchTrip = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/trips/my-trips");
+      const found = res.data.find((t) => String(t.id) === String(id));
+      setTrip(found || null);
+    } catch (err) {
+      console.error("Failed to load trip", err);
+      setTrip(null);
+    } finally {
+      setLoading(false);
+    }
+  };
   const loadAIRecommendations = async (companionType) => {
     if (!trip) return;
 
@@ -177,8 +180,6 @@ const fetchTrip = async () => {
             {showMap ? "Hide Map" : "Explore Nearby Places"}
           </button>
 
-          
-
           {/* optional: a small status label */}
           <span className="ml-auto text-sm text-gray-500">
             Status: <strong className="ml-1">{trip.status ?? "—"}</strong>
@@ -262,17 +263,6 @@ const fetchTrip = async () => {
         )}
       </div>
 
-      <div className="mt-6 flex gap-4">
-        <button
-          onClick={() => navigate(`/trips/${id}/booking`)}
-          className="bg-green-600 text-white px-6 py-3 rounded-xl"
-        >
-          Proceed to Booking
-        </button>
-
-        
-      </div>
-
       {/* MAP: show only if user toggled */}
       {showMap && (
         <div className="mt-6">
@@ -325,28 +315,56 @@ const fetchTrip = async () => {
                   </div>
 
                   <button
-                    onClick={async () => {
-                      try {
-                        await api.post(`/trips/${trip.id}/food/add`, {
-                          food: f,
-                        });
+                    onClick={() => {
+                      if (savedFoodsBackend.includes(f.dish)) return;
 
-                        navigate(`/trips/${trip.id}/updated-summary`);
-
-                        alert("🍽️ Food saved to trip!");
-                        fetchTrip();
-                      } catch (err) {
-                        console.error(err);
-                        alert("Failed to save food.");
+                      if (!selectedFoods.find((x) => x.dish === f.dish)) {
+                        setSelectedFoods((prev) => [...prev, f]);
                       }
                     }}
-                    className="bg-green-600 text-white px-3 py-1 rounded text-xs"
+                    className={`px-3 py-1 rounded text-xs ${
+                      savedFoodsBackend.includes(f.dish)
+                        ? "bg-green-700 text-white"
+                        : selectedFoods.find((x) => x.dish === f.dish)
+                          ? "bg-yellow-500 text-white"
+                          : "bg-green-600 text-white"
+                    }`}
                   >
-                    Save
+                    {savedFoodsBackend.includes(f.dish)
+                      ? "Saved ✓"
+                      : selectedFoods.find((x) => x.dish === f.dish)
+                        ? "Selected"
+                        : "Save"}
                   </button>
                 </div>
               ))}
             </div>
+            {selectedFoods.length > 0 && (
+              <button
+                onClick={async () => {
+                  try {
+                    const newlySaved = [];
+
+                    for (const food of selectedFoods) {
+                      await api.post(`/trips/${trip.id}/food/add`, {
+                        food,
+                      });
+
+                      newlySaved.push(food.dish);
+                    }
+
+                    setSavedFoodsBackend((prev) => [...prev, ...newlySaved]);
+                    setSelectedFoods([]);
+                    setHasChanges(true);
+                  } catch {
+                    alert("Failed to save foods");
+                  }
+                }}
+                className="mt-4 bg-purple-600 text-white px-4 py-2 rounded"
+              >
+                Save Selected Foods
+              </button>
+            )}
           </div>
         )}
 
@@ -374,9 +392,9 @@ const fetchTrip = async () => {
                         type: s.category,
                       },
                     });
+                    setHasChanges(true);
 
                     alert("Added to itinerary!");
-                    fetchTrip();
                   }}
                   className="bg-green-600 text-white px-3 py-1 rounded text-xs"
                 >
@@ -386,6 +404,21 @@ const fetchTrip = async () => {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="mt-6 flex gap-4">
+        <button
+          onClick={() => {
+            if (hasChanges) {
+              navigate(`/trips/${id}/updated-summary`);
+            } else {
+              navigate(`/trips/${id}/booking`);
+            }
+          }}
+          className="bg-green-600 text-white px-6 py-3 rounded-xl"
+        >
+          Proceed to Booking
+        </button>
       </div>
 
       {/* STATUS / CONFIDENCE */}
