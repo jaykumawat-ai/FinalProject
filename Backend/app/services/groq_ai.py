@@ -125,7 +125,10 @@ def generate_recommendations(prompt: str) -> str:
     payload = {
         "model": "llama-3.1-8b-instant",
         "messages": [
-            {"role": "system", "content": "You are a smart travel assistant."},
+            {
+            "role": "system",
+            "content": "You are a strict JSON generator. Always return valid JSON only. No markdown. No explanation."
+            },
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.5,

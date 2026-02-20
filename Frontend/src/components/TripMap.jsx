@@ -108,6 +108,7 @@ export default function TripMap({
 }) {
   const [places, setPlaces] = useState([]);
   const [savedPlaces, setSavedPlaces] = useState([]);
+  const [exploreSavedPlaces, setExploreSavedPlaces] = useState([]);
   const [tripDays, setTripDays] = useState(5);
   const isGlobal = mode === "explore";
   const [city, setCity] = useState("");
@@ -214,6 +215,9 @@ export default function TripMap({
         type: selectedPlace.type,
       });
 
+      const res = await api.get("/explore/saved");
+      setExploreSavedPlaces(res.data || []);
+
       alert("Saved to Explore!");
     } catch {
       alert("Failed to save");
@@ -282,6 +286,22 @@ export default function TripMap({
   }, [tripId, radius, categories.join(",")]);
 
   /* ================= LOAD SAVED ================= */
+
+  useEffect(() => {
+    if (!isGlobal) return;
+
+    async function loadExploreSaved() {
+      try {
+        const res = await api.get("/explore/saved");
+        setExploreSavedPlaces(res.data || []);
+      } catch (err) {
+        console.error("Failed to load explore saved", err);
+      }
+    }
+
+    loadExploreSaved();
+  }, [isGlobal]);
+
   useEffect(() => {
     if (isGlobal) return; // 🚀 Skip saved places in global
 
@@ -445,6 +465,19 @@ export default function TripMap({
     }
   };
 
+  const removeExplorePlace = async (place) => {
+    try {
+      await api.delete("/explore/saved", {
+        params: { name: place.name },
+      });
+
+      const res = await api.get("/explore/saved");
+      setExploreSavedPlaces(res.data || []);
+    } catch (err) {
+      console.error("Failed to remove explore place", err);
+    }
+  };
+
   // Open Google Maps directions (origin optional)
   function openGoogleDirections(destLat, destLon) {
     const origin =
@@ -557,14 +590,13 @@ export default function TripMap({
               </button>
             ))}
 
-            {!isGlobal && (
-              <button
-                onClick={() => setShowSavedPanel(true)}
-                className="ml-auto px-3 py-1 border rounded bg-white hover:bg-gray-50"
-              >
-                📍 Saved Places ({savedPlaces.length})
-              </button>
-            )}
+            <button
+              onClick={() => setShowSavedPanel(true)}
+              className="ml-auto px-3 py-1 border rounded bg-white hover:bg-gray-50"
+            >
+              📍 Saved Places (
+              {isGlobal ? exploreSavedPlaces.length : savedPlaces.length})
+            </button>
           </div>
 
           {/* Travel Mode + notification category toggles */}
@@ -679,22 +711,42 @@ export default function TripMap({
               )}
 
               <MarkerClusterGroup>
-                {savedPlaces.map((p) => {
-                  const key = `${p.id ?? p.place_id ?? p.name}-${p.lat}-${p.lon}`;
-                  return (
-                    <Marker
-                      key={`saved-${key}`}
-                      position={[p.lat, p.lon]}
-                      icon={savedIcon}
-                    >
-                      <Popup>
-                        <strong>{p.name}</strong>
-                        <br />
-                        Saved • {p.distance_km} km
-                      </Popup>
-                    </Marker>
-                  );
-                })}
+                {!isGlobal &&
+                  savedPlaces.map((p) => {
+                    const key = `${p.id ?? p.place_id ?? p.name}-${p.lat}-${p.lon}`;
+                    return (
+                      <Marker
+                        key={`saved-${key}`}
+                        position={[p.lat, p.lon]}
+                        icon={savedIcon}
+                      >
+                        <Popup>
+                          <strong>{p.name}</strong>
+                          <br />
+                          Saved • {p.distance_km} km
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
+
+                {isGlobal &&
+                  exploreSavedPlaces.map((p) => {
+                    const key = `${p.id}-${p.lat}-${p.lon}`;
+
+                    return (
+                      <Marker
+                        key={`explore-saved-${key}`}
+                        position={[p.lat, p.lon]}
+                        icon={savedIcon}
+                      >
+                        <Popup>
+                          <strong>{p.name}</strong>
+                          <br />
+                          Saved Place
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
 
                 {filteredPlaces.map((p) => {
                   const key = `${p.id ?? p.place_id ?? p.name}-${p.lat}-${p.lon}`;
@@ -854,20 +906,21 @@ export default function TripMap({
       </div>
 
       {/* RIGHT: Saved places collapsible panel */}
-      {!isGlobal && showSavedPanel && (
+      {showSavedPanel && (
         <div className="w-80 border-l bg-white shadow-xl overflow-auto">
           <div className="p-4 border-b flex justify-between items-center">
             <h3 className="font-semibold">
-              Saved Places ({savedPlaces.length})
+              Saved Places (
+              {isGlobal ? exploreSavedPlaces.length : savedPlaces.length})
             </h3>
             <button onClick={() => setShowSavedPanel(false)}>Close</button>
           </div>
 
           <div className="p-4 space-y-2">
-            {savedPlaces.length === 0 ? (
+            {(isGlobal ? exploreSavedPlaces : savedPlaces).length === 0 ? (
               <p className="text-sm text-gray-500">No saved places</p>
             ) : (
-              savedPlaces.map((p, i) => (
+              (isGlobal ? exploreSavedPlaces : savedPlaces).map((p, i) => (
                 <div
                   key={`${p.id ?? p.place_id ?? p.name}-${p.lat}-${p.lon}-${i}`}
                   className="border p-2 rounded cursor-pointer hover:bg-green-50"
@@ -920,7 +973,9 @@ export default function TripMap({
                       </button>
 
                       <button
-                        onClick={() => removeSavedPlace(p)}
+                        onClick={() =>
+                          isGlobal ? removeExplorePlace(p) : removeSavedPlace(p)
+                        }
                         className="text-xs border px-2 py-1 rounded"
                       >
                         Remove

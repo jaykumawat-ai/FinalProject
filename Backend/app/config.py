@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     rapidapi_key: str | None = None
     rapidapi_host: str | None = None
 
+
+        # AI Ranking Weights (must sum to 1.0 ideally)
+    AI_TAG_WEIGHT: float = 0.4
+    AI_POPULARITY_WEIGHT: float = 0.3
+    AI_SUITABILITY_WEIGHT: float = 0.3
+
     
 
     class Config:
